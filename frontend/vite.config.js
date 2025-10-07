@@ -6,17 +6,15 @@ const port = Number(process.env.PORT || 4173)
 
 export default defineConfig({
   plugins: [react()],
-  // 開発時はどこからでも叩けるように
   server: { host: true },
-  // 本番プレビュー (vite preview)
   preview: {
     host: true,
     port,
-    // ← ここがポイント
+    // ← Railway で発行された “そのままの” ドメインを列挙
     allowedHosts: [
       'localhost',
-      /\.up\.railway\.app$/,  // Railway の発行ドメイン全部許可
-      /\.railway\.app$/       // 互換のため
-    ]
-  }
+      '127.0.0.1',
+      'rare-caring-production-e448.up.railway.app', // ← あなたのフロントURL
+    ],
+  },
 })
