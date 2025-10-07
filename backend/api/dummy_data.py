@@ -1,74 +1,45 @@
-# backend/api/dummy_data.py
-from __future__ import annotations
-from datetime import datetime, timedelta
+# 画面用のダミーデータ（以前 ImportError になっていたので関数を定義し直す）
 
-# 30分刻みのタイムラインを返す
-def make_daily_route() -> dict:
-    now = datetime.now().replace(second=0, microsecond=0)
-    base = now.replace(minute=0)
-    labels = [
-        "Stay in Dogenzaka cluster",
-        "Reposition to Ebisu",
-        "Peak around station",
-        "Wait near hotspot",
-        "Shift to East Gate",
-        "Peak around station",
-    ]
-    icons = ["pin", "move", "bolt", "pause", "move", "bolt"]
-    timeline = []
-    for i, (label, icon) in enumerate(zip(labels, icons)):
-        t = base + timedelta(minutes=30 * (i + 1))
-        timeline.append({"time": t.strftime("%H:%M"), "label": label, "icon": icon})
+def make_daily_route():
+    # カード状のAI提案ルート（簡易ダミー）
     return {
-        "recommended_area": "Shibuya",
-        "predicted_income": 13889,  # ¥表記はフロント側
-        "timeline": timeline,
+        "cards_total": 3,
+        "current_index": 1,
+        "items": [
+            {"time": "16:00", "icon": "pin", "text": "Stay in Dogenzaka cluster"},
+            {"time": "16:30", "icon": "bolt", "text": "Reposition to Ebisu"},
+            {"time": "17:00", "icon": "radar", "text": "Peak around station"},
+            {"time": "17:30", "icon": "clock", "text": "Wait near hotspot"},
+            {"time": "18:00", "icon": "pin", "text": "Shift to East Gate"},
+            {"time": "18:30", "icon": "radar", "text": "Peak around station"},
+        ],
+        "estimated_income": 13781,
     }
 
-# 日次サマリー（目標額に対する進捗も返す）
-def make_daily_summary(goal: int = 12000) -> dict:
-    total = 9868
-    hours = 4.2
-    count = 16
-    avg_hourly = round(total / hours, 1)
-    progress = min(100, int(total / goal * 100)) if goal else 0
+def make_daily_summary(goal):
     return {
-        "total": total,
-        "count": count,
-        "avg_hourly": avg_hourly,
-        "hours": hours,
         "goal": goal,
-        "progress": progress,
+        "earned": 10168,
+        "per_hour": 2163,
+        "hours": 4.7,
+        "progress_pct": 84,
     }
 
-# ヒートマップ用ポイント
-def make_heatmap_points() -> dict:
-    points = [
-        {
-            "lat": 35.659, "lng": 139.700, "intensity": 0.9,
-            "top_restaurants": ["Ichiran", "Uobei", "Afuri"],
-        },
-        {
-            "lat": 35.647, "lng": 139.709, "intensity": 0.7,
-            "top_restaurants": ["Shake Shack", "Burger Mania"],
-        },
-        {
-            "lat": 35.667, "lng": 139.706, "intensity": 0.6,
-            "top_restaurants": ["Torikizoku", "Hidakaya"],
-        },
-    ]
-    return {"points": points}
+def make_heatmap_points():
+    return {
+        "points": [
+            {"lat": 35.6581, "lng": 139.7017, "weight": 0.9},
+            {"lat": 35.6478, "lng": 139.7094, "weight": 0.8},
+            {"lat": 35.6422, "lng": 139.6995, "weight": 0.6},
+        ]
+    }
 
-# 週間予測（天気＋需要）
-def make_weekly_forecast() -> dict:
-    today = datetime.now()
-    days = []
-    for i in range(7):
-        d = today + timedelta(days=i)
-        days.append({
-            "date": d.strftime("%Y-%m-%d"),
-            "weekday": d.strftime("%a"),
-            "weather": "Clouds" if i % 3 else "Rain",
-            "demand_level": "high" if i % 2 == 0 else "mid",
-        })
-    return {"days": days}
+def make_weekly_forecast():
+    return {
+        "days": [
+            {"d": "Mon", "demand": 0.6}, {"d": "Tue", "demand": 0.7},
+            {"d": "Wed", "demand": 0.8}, {"d": "Thu", "demand": 0.7},
+            {"d": "Fri", "demand": 0.9}, {"d": "Sat", "demand": 1.0},
+            {"d": "Sun", "demand": 0.8},
+        ]
+    }

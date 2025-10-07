@@ -1,77 +1,42 @@
-const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/+$/, ""); // 終端スラ無し
+// API クライアント（トークン付与＆401ハンドリング）
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
-let _token = localStorage.getItem("token") || "";
-
-export function setToken(t) {
-  _token = t || "";
-  if (_token) localStorage.setItem("token", _token);
-  else localStorage.removeItem("token");
+function getToken() {
+  return localStorage.getItem("access_token") || "";
 }
 
-export function getToken() {
-  return _token;
-}
-
-async function req(path, opts = {}) {
-  const headers = new Headers(opts.headers || {});
+async function request(path, options = {}) {
+  const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
-  const t = getToken();
-  if (t) headers.set("Authorization", `Bearer ${t}`);
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers,
-    credentials: "omit"
-  });
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  // 401は呼び出し側で扱いやすいように明示
-  if (res.status === 401) {
-    throw new Error("AUTH_401");
+  const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  if (resp.status === 401) {
+    // 未ログイン→呼び出し側でログインUIを出す
+    throw new Error("UNAUTHORIZED");
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HTTP_${res.status}:${text.slice(0,200)}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || `HTTP ${resp.status}`);
   }
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return res.json();
-  return res.text();
+  const ct = resp.headers.get("content-type") || "";
+  return ct.includes("application/json") ? resp.json() : resp.text();
 }
 
-// ---- Auth ----
-export async function apiRegister({ username = "", email = "", password }) {
-  return req("/api/auth/register/", {
-    method: "POST",
-    body: JSON.stringify({ username, email, password })
-  });
-}
-
-export async function apiLogin({ username, password }) {
-  const data = await req("/api/auth/login/", {
-    method: "POST",
-    body: JSON.stringify({ username, password })
-  });
-  setToken(data.access);
-  return data;
-}
-
-export async function apiMe() {
-  return req("/api/auth/me/");
-}
-
-// ---- Data ----
-export async function apiDailyRoute() {
-  return req("/api/daily-route/");
-}
-
-export async function apiDailySummary(goal = 12000) {
-  const q = new URLSearchParams({ goal: String(goal) });
-  return req(`/api/daily-summary/?${q}`);
-}
-
-export async function apiHeatmap() {
-  return req("/api/heatmap-data/");
-}
-
-export async function apiWeeklyForecast() {
-  return req("/api/weekly-forecast/");
-}
+export const api = {
+  register: (payload) =>
+    request("/auth/register/", { method: "POST", body: JSON.stringify(payload) }),
+  login: (payload) =>
+    request("/auth/login/", { method: "POST", body: JSON.stringify(payload) }),
+  me: () => request("/me/"),
+  dailyRoute: () => request("/daily-route/"),
+  dailySummary: (goal = 12000) => request(`/daily-summary/?goal=${goal}`),
+  heatmap: () => request("/heatmap-data/"),
+  weeklyForecast: () => request("/weekly-forecast/"),
+  records: {
+    list: () => request("/records/"),
+    create: (payload) => request("/records/", { method: "POST", body: JSON.stringify(payload) }),
+  },
+};
