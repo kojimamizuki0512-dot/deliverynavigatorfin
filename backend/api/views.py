@@ -1,157 +1,97 @@
-from datetime import date
-import hashlib, random
-
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.http import HttpResponse
-from django.views import View
-
-from rest_framework import status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.db import IntegrityError, transaction
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from .serializers import RegisterSerializer, LoginSerializer
+from .dummy_data import (
+    make_daily_route,
+    make_daily_summary,
+    make_heatmap_points,
+    make_weekly_forecast,
+)
 
-from .serializers import RegisterSerializer
-
-# --- SimpleJWT ---
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
-
-# ===== ルート用 "必ず200" ヘルス =====
-class RootOk(View):
-    """
-    / に対して GET/HEAD どちらも 200 を即返す。
-    テンプレ/静的/DB に一切依存しないため、デプロイ直後でも確実に通る。
-    """
-    def get(self, request, *args, **kwargs):
-        return HttpResponse("ok", content_type="text/plain")
-    def head(self, request, *args, **kwargs):
-        return HttpResponse("", content_type="text/plain")
-
-
-# ===== 認証系 =====
-class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
-    def validate(self, attrs):
-        username = attrs.get(self.username_field)
-        if username and "@" in username:
-            try:
-                user = User.objects.get(email__iexact=username)
-                attrs[self.username_field] = user.username
-            except User.DoesNotExist:
-                pass
-        return super().validate(attrs)
-
-class LoginView(TokenObtainPairView):
-    permission_classes = [AllowAny]
-    serializer_class = EmailTokenObtainPairSerializer
-
-class RefreshView(TokenRefreshView):
-    permission_classes = [AllowAny]
-
-class RegisterView(APIView):
-    permission_classes = [AllowAny]
-    def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        return Response(
-            {"id": user.id, "username": user.username, "email": user.email, "first_name": user.first_name},
-            status=status.HTTP_201_CREATED,
-        )
-
-class MeView(APIView):
-    permission_classes = [IsAuthenticated]
+# ---- ヘルス/ルート ----
+class RootOk(APIView):
+    permission_classes = [permissions.AllowAny]
     def get(self, request):
-        u = request.user
-        return Response({"id": u.id, "username": u.username, "email": u.email, "first_name": u.first_name})
+        return Response("ok")
 
-
-# ===== ヘルスチェック（API配下でも提供） =====
 class Healthz(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [permissions.AllowAny]
     def get(self, request):
         return Response({"status": "ok", "service": "deliverynavigatorfin"})
 
+# ---- Auth ----
+class RegisterView(APIView):
+    permission_classes = [permissions.AllowAny]
+    def post(self, request):
+        ser = RegisterSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                user = ser.save()
+        except IntegrityError:
+            return Response(
+                {"detail": "登録できませんでした（ユーザー名またはメールの重複）。"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
-# ====== ユーザー固有のダミー生成 ======
-def _rng_for_user(user, label: str) -> random.Random:
-    seed_src = f"{user.id}|{date.today().isoformat()}|{label}"
-    seed = int(hashlib.sha256(seed_src.encode()).hexdigest(), 16) % (2**32)
-    return random.Random(seed)
+class LoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+    def post(self, request):
+        ser = LoginSerializer(data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=status.HTTP_400_BAD_REQUEST)
+        user = authenticate(
+            username=ser.validated_data["username"],
+            password=ser.validated_data["password"],
+        )
+        if not user:
+            return Response({"detail": "ユーザー名またはパスワードが違います。"}, status=400)
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {"access": str(refresh.access_token), "refresh": str(refresh)}, status=200
+        )
 
-def _money_for_user(user, base: int, spread: int, label: str) -> int:
-    rng = _rng_for_user(user, label)
-    return max(0, base + rng.randint(-spread, spread))
-
-
-# ====== 既存ダミーAPI（認証必須 & ユーザー固有） ======
-class DailyRoute(APIView):
-    permission_classes = [IsAuthenticated]
+class MeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
-        user = request.user
-        rng = _rng_for_user(user, "route")
-        timeline = [
-            {"time": "18:00", "icon": "pin",   "text": "Stay in Dogenzaka cluster"},
-            {"time": "18:30", "icon": "move",  "text": "Reposition to Ebisu"},
-            {"time": "19:00", "icon": "bolt",  "text": "Peak around station"},
-            {"time": "19:30", "icon": "lock",  "text": "Wait near hotspot"},
-            {"time": "20:00", "icon": "pin",   "text": "Shift to East Gate"},
-            {"time": "20:30", "icon": "bolt",  "text": "Peak around station"},
-        ]
-        pep = rng.choice(["Go!", "Nice pace", "Hold position", "Boost soon", "Green surge"])
-        predicted = _money_for_user(user, base=13800, spread=1200, label="predicted")
-        data = {
-            "recommended_area": rng.choice(["Shibuya", "Ebisu", "Meguro", "Daikanyama"]),
-            "predicted_daily_income": predicted,
-            "pep_talk": pep,
-            "timeline": timeline,
-        }
-        return Response(data)
+        u = request.user
+        return Response({"id": u.id, "username": u.username, "email": u.email})
 
-class DailySummary(APIView):
-    permission_classes = [IsAuthenticated]
+# ---- ダミーAPI ----
+class DailyRouteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
-        user = request.user
-        goal = int(request.query_params.get("goal", "12000"))
-        total = _money_for_user(user, base=9868, spread=1500, label="total")
-        hours = 4.2 + _rng_for_user(user, "hours").random() * 0.6
-        avg = int(total / max(hours, 0.1))
-        rate = min(100, int(total / max(goal, 1) * 100))
-        return Response({
-            "total_sales": total,
-            "orders": 12 + _rng_for_user(user, "orders").randint(-3, 5),
-            "avg_hourly": avg,
-            "work_hours": round(hours, 1),
-            "goal_rate": rate,
-        })
+        return Response(make_daily_route())
 
-class HeatmapData(APIView):
-    permission_classes = [IsAuthenticated]
+class DailySummaryView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
-        user = request.user
-        rng = _rng_for_user(user, "heat")
-        points = []
-        base_lat, base_lng = 35.6581, 139.7017
-        for _ in range(12):
-            points.append({
-                "lat": base_lat + rng.uniform(-0.02, 0.02),
-                "lng": base_lng + rng.uniform(-0.02, 0.02),
-                "intensity": round(0.5 + rng.random()*0.5, 2),
-                "restaurants": rng.sample(
-                    ["Sushi A", "Ramen B", "Curry C", "Cafe D", "Burger E", "Taco F"], k=3
-                ),
-            })
-        return Response({"points": points})
+        goal = int(request.GET.get("goal", 12000))
+        return Response(make_daily_summary(goal))
 
-class WeeklyForecast(APIView):
-    permission_classes = [IsAuthenticated]
+class HeatmapDataView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
-        user = request.user
-        rng = _rng_for_user(user, "weekly")
-        wd = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        return Response({
-            "items": [
-                {"day": d, "weather": rng.choice(["sunny", "cloudy", "rainy"]), "demand": rng.randint(1, 5)}
-                for d in wd
-            ]
-        })
+        return Response(make_heatmap_points())
+
+class WeeklyForecastView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request):
+        return Response(make_weekly_forecast())

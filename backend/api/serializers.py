@@ -1,22 +1,32 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-class RegisterSerializer(serializers.ModelSerializer):
-    # email を必須にして username にも流用
-    email = serializers.EmailField(required=True)
-    password = serializers.CharField(write_only=True, min_length=8)
+class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    password = serializers.CharField(write_only=True, min_length=4)
 
-    class Meta:
-        model = User
-        fields = ("username", "email", "password", "first_name")
-        extra_kwargs = {"username": {"required": False}}
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("このユーザー名は既に使われています。")
+        return value
+
+    def validate_email(self, value):
+        if value:
+            if User.objects.filter(email__iexact=value).exists():
+                raise serializers.ValidationError("このメールアドレスは既に登録されています。")
+        return value
 
     def create(self, validated_data):
-        email = validated_data["email"].lower()
-        username = validated_data.get("username") or email
-        password = validated_data["password"]
-        first_name = validated_data.get("first_name", "")
+        email = validated_data.get("email") or ""
         user = User.objects.create_user(
-            username=username, email=email, password=password, first_name=first_name
+            username=validated_data["username"],
+            email=(email or None),
+            password=validated_data["password"],
         )
         return user
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)

@@ -4,20 +4,15 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ==== 基本 ====
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 
-# ---- ALLOWED_HOSTS を絶対に許可（env 未設定でもフォールバック）----
 _env_hosts = os.getenv("ALLOWED_HOSTS", "").strip()
 if _env_hosts:
     ALLOWED_HOSTS = [h.strip() for h in _env_hosts.split(",") if h.strip()]
 else:
-    # Railway のProvidedドメインを拾えない場合でも確実に通す
-    # デモ用途なので '*'。本番は明示列挙に戻す。
-    ALLOWED_HOSTS = ["*"]
+    ALLOWED_HOSTS = ["*"]  # デモ優先
 
-# ==== アプリ ====
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -44,7 +39,6 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "deliverynavigatorfin.urls"
 
-# Admin が要求するテンプレ設定（最低限）
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -63,7 +57,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "deliverynavigatorfin.wsgi.application"
 
-# ==== DB ====
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -71,30 +64,28 @@ DATABASES = {
     }
 }
 
-# ==== パスワード ====
+# ---- パスワード要件をゆるく（最短4文字のみ）----
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 4},
+    },
 ]
+# ※ Numeric や Similarity, Common は外しています
 
 LANGUAGE_CODE = "ja"
 TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
-USE_TZ = False  # SQLite なのでオフでもOK（お好みで）
+USE_TZ = False
 
-# ==== 静的ファイル（WhiteNoise）====
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-# ==== REST / JWT ====
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
-    # ビューで個別に Permission を設定しているのでデフォルトは AllowAny
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
@@ -103,12 +94,12 @@ REST_FRAMEWORK = {
     ],
 }
 
+from datetime import timedelta
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
 }
 
-# ==== CORS / CSRF ====
 _front = os.getenv("FRONTEND_ORIGIN", "").strip().rstrip("/")
 _back = os.getenv("BACKEND_ORIGIN", "").strip().rstrip("/")
 
@@ -116,9 +107,6 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [o for o in [_front] if o]
 CSRF_TRUSTED_ORIGINS = [o for o in [_front, _back] if o]
 
-# ==== 逆プロキシ越しのHTTPSを正しく認識 ====
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
-# 追加のセキュリティ（任意）
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
