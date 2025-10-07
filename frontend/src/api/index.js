@@ -1,46 +1,80 @@
-// フロントエンドから叩くAPIクライアント（Vite環境変数を使用）
-const ENV_BASE = (import.meta.env?.VITE_API_BASE || "").replace(/\/+$/, "");
+// ==== API クライアント ====
+// フロント -> バックエンドの呼び出しを一箇所に集約
+// App.jsx からは { api, setToken, getToken } を import できます。
 
-// フォールバック（もし環境変数が空なら、バックエンドの既定URLを使う）
-// 必ず末尾スラなし。各エンドポイントで /xxx/ を付ける。
-const BASE = ENV_BASE || "https://deliverynavigatorfin-production.up.railway.app/api";
+const BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 
-async function http(path, opts = {}) {
-  const token = localStorage.getItem("access");
-  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+// ---- Token helpers (App.jsxから使うのでexport) ----
+export function getToken() {
+  try { return localStorage.getItem("access") || ""; } catch { return ""; }
+}
+export function setToken(access, refresh) {
+  try {
+    if (access) localStorage.setItem("access", access);
+    if (refresh) localStorage.setItem("refresh", refresh);
+  } catch {}
+}
+export function clearToken() {
+  try {
+    localStorage.removeItem("access");
+    localStorage.removeItem("refresh");
+  } catch {}
+}
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+// ---- 共通fetch ----
+async function request(path, { method = "GET", headers = {}, body } = {}) {
+  const h = { "Content-Type": "application/json", ...headers };
+  const token = getToken();
+  if (token) h["Authorization"] = `Bearer ${token}`;
 
+  const res = await fetch(`${BASE}${path}`, { method, headers: h, body });
   if (!res.ok) {
-    // 可能ならエラーボディも返す
+    // エラー本文を拾ってメッセージ化
     let detail = "";
-    try {
-      const t = await res.text();
-      detail = t;
-    } catch {
-      /* noop */
-    }
-    throw new Error(`HTTP ${res.status} at ${path}${detail ? `: ${detail}` : ""}`);
+    try { detail = await res.text(); } catch {}
+    throw new Error(`${res.status} ${res.statusText} :: ${detail}`);
   }
-
   const ct = res.headers.get("content-type") || "";
   return ct.includes("application/json") ? res.json() : res.text();
 }
 
-export const api = {
-  // 認証
-  register: (payload) =>
-    http("/auth/register/", { method: "POST", body: JSON.stringify(payload) }),
-  login: (payload) =>
-    http("/auth/login/", { method: "POST", body: JSON.stringify(payload) }),
-  me: () => http("/auth/me/"),
+// ---- 認証API ----
+async function register({ username, email, password }) {
+  return request("/api/auth/register/", {
+    method: "POST",
+    body: JSON.stringify({ username, email, password }),
+  });
+}
+async function login({ username, password }) {
+  const data = await request("/api/auth/login/", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  setToken(data.access, data.refresh);
+  return data;
+}
+async function me() { return request("/api/auth/me/"); }
+function logout() { clearToken(); }
 
-  // ダミーデータ（バックエンドの API に合わせる）
-  dailyRoute: () => http("/daily-route/"),
-  dailySummary: (goal = 12000) => http(`/daily-summary/?goal=${goal}`),
-  heatmap: () => http("/heatmap-data/"),
-  weekly: () => http("/weekly-forecast/"),
+// ---- アプリデータAPI ----
+function dailyRoute()              { return request("/api/daily-route/"); }
+function dailySummary(goal = 12000){ return request(`/api/daily-summary/?goal=${goal}`); }
+function heatmap()                 { return request("/api/heatmap-data/"); }
+function weeklyForecast()          { return request("/api/weekly-forecast/"); }
+function createRecord(payload)     { return request("/api/records/", { method: "POST", body: JSON.stringify(payload) }); }
+function listRecords()             { return request("/api/records/"); }
+
+// ---- export ----
+export const auth = { register, login, me, logout };
+export const data = { dailyRoute, dailySummary, heatmap, weeklyForecast, createRecord, listRecords };
+
+// App.jsx が使う { api } も提供
+export const api = {
+  ...auth,
+  ...data,
+  request,
+  BASE,
 };
 
-export { BASE as API_BASE };
+// default も付けておくと import api from "./api" にも対応できる
+export default api;

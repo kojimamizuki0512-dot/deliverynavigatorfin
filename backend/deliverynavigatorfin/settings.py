@@ -1,13 +1,18 @@
 from pathlib import Path
 import os
-import dj_database_url
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- 基本 ---
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-insecure-key")
-DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() in ("1", "true", "yes")
-ALLOWED_HOSTS = ["*"]  # Railway はワイルドカードでOK（envの ALLOWED_HOSTS は不要）
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-change-me")
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("1", "true", "yes")
+
+# ホスト
+_raw_hosts = os.environ.get("ALLOWED_HOSTS", "")
+if _raw_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(",") if h.strip()]
+else:
+    ALLOWED_HOSTS = ["*"] if DEBUG else []
 
 # --- アプリ ---
 INSTALLED_APPS = [
@@ -18,14 +23,14 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    "corsheaders",
     "rest_framework",
-    "rest_framework_simplejwt",
+    "corsheaders",
+
     "api",
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",  # できるだけ上に
+    "corsheaders.middleware.CorsMiddleware",  # CORSは一番上寄り
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -55,31 +60,31 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "deliverynavigatorfin.wsgi.application"
 
-# --- DB（SQLite をデフォルト。DATABASE_URL があれば上書き）---
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
-}
+# --- DB: DATABASE_URL があれば優先。なければ SQLite ---
+def _sqlite_conf(name: str):
+    return {"ENGINE": "django.db.backends.sqlite3", "NAME": str(BASE_DIR / name)}
 
-db_url = os.getenv("DATABASE_URL")
-if db_url:
-    # conn_max_ageでコネクション再利用。sslmodeはpostgresの時だけ付くように後段で制御
-    db_cfg = dj_database_url.parse(db_url, conn_max_age=600)
-    DATABASES["default"] = db_cfg
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+DATABASES = {"default": _sqlite_conf("db.sqlite3")}
 
-    engine = db_cfg.get("ENGINE", "")
-    # Postgres の時だけ SSL を強制
-    if engine.endswith("postgresql") or engine.endswith("postgresql_psycopg2"):
-        DATABASES["default"].setdefault("OPTIONS", {})
-        DATABASES["default"]["OPTIONS"]["sslmode"] = "require"
+if DATABASE_URL:
+    use_sqlite = DATABASE_URL.startswith("sqlite:")
+    if use_sqlite:
+        # 例: sqlite:///db.sqlite3
+        path = DATABASE_URL.split("///")[-1] or "db.sqlite3"
+        DATABASES["default"] = _sqlite_conf(path)
     else:
-        # SQLite/MySQL 等では sslmode を絶対に持たせない
-        if "OPTIONS" in DATABASES["default"]:
-            DATABASES["default"]["OPTIONS"].pop("sslmode", None)
+        # 可能なら dj_database_url を利用、無ければ静かに SQLite にフォールバック
+        try:
+            import dj_database_url  # type: ignore
+            DATABASES["default"] = dj_database_url.config(
+                default=DATABASE_URL, conn_max_age=600
+            )
+        except Exception:
+            # フォールバック（ログ不要／500は出さない）
+            DATABASES["default"] = _sqlite_conf("db.sqlite3")
 
-# --- パスワード／i18n ---
+# --- パスワード・認証 ---
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -87,37 +92,33 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-LANGUAGE_CODE = "ja"
-TIME_ZONE = "Asia/Tokyo"
-USE_I18N = True
-USE_TZ = True
-
-# --- 静的ファイル ---
-STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"  # ← W042警告の解消
-
-# --- REST Framework / JWT ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
     ],
+    # 既定は認証必須。AllowAny を付けたビューは公開される。
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
 }
 
-# --- CORS / CSRF ---
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN")  # 例: https://rare-caring-production-xxxx.up.railway.app
-CORS_ALLOW_CREDENTIALS = True
+# --- i18n ---
+LANGUAGE_CODE = "ja"
+TIME_ZONE = "Asia/Tokyo"
+USE_I18N = True
+USE_TZ = True
 
+# --- 静的 ---
+STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# --- CORS / CSRF ---
+FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN")
 if FRONTEND_ORIGIN:
     CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN]
+    # Railway は https。スキーム込みで。
     CSRF_TRUSTED_ORIGINS = [FRONTEND_ORIGIN]
 else:
-    # 一時的に許可を広める（本番で固定できるなら FRONTEND_ORIGIN を使ってください）
-    CORS_ALLOWED_ORIGINS = []
-    if DEBUG:
-        CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOW_ALL_ORIGINS = DEBUG
