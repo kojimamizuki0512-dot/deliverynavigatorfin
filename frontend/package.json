@@ -10,9 +10,9 @@
     "start:prod": "npx --yes serve -s dist -l ${PORT:-4173}"
   },
   "dependencies": {
-    "@radix-ui/react-dialog": "^1.1.1",
-    "clsx": "^2.1.1",
-    "dayjs": "^1.11.11",
+    "@radix-ui/react-dialog": "1.1.15",
+    "clsx": "2.1.1",
+    "dayjs": "1.11.18",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
