@@ -1,42 +1,46 @@
-// API クライアント（トークン付与＆401ハンドリング）
-const API_BASE = import.meta.env.VITE_API_BASE || "/api";
+// フロントエンドから叩くAPIクライアント（Vite環境変数を使用）
+const ENV_BASE = (import.meta.env?.VITE_API_BASE || "").replace(/\/+$/, "");
 
-function getToken() {
-  return localStorage.getItem("access_token") || "";
-}
+// フォールバック（もし環境変数が空なら、バックエンドの既定URLを使う）
+// 必ず末尾スラなし。各エンドポイントで /xxx/ を付ける。
+const BASE = ENV_BASE || "https://deliverynavigatorfin-production.up.railway.app/api";
 
-async function request(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  headers.set("Content-Type", "application/json");
+async function http(path, opts = {}) {
+  const token = localStorage.getItem("access");
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
 
-  const resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (resp.status === 401) {
-    // 未ログイン→呼び出し側でログインUIを出す
-    throw new Error("UNAUTHORIZED");
+  if (!res.ok) {
+    // 可能ならエラーボディも返す
+    let detail = "";
+    try {
+      const t = await res.text();
+      detail = t;
+    } catch {
+      /* noop */
+    }
+    throw new Error(`HTTP ${res.status} at ${path}${detail ? `: ${detail}` : ""}`);
   }
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || `HTTP ${resp.status}`);
-  }
-  const ct = resp.headers.get("content-type") || "";
-  return ct.includes("application/json") ? resp.json() : resp.text();
+
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
 }
 
 export const api = {
+  // 認証
   register: (payload) =>
-    request("/auth/register/", { method: "POST", body: JSON.stringify(payload) }),
+    http("/auth/register/", { method: "POST", body: JSON.stringify(payload) }),
   login: (payload) =>
-    request("/auth/login/", { method: "POST", body: JSON.stringify(payload) }),
-  me: () => request("/me/"),
-  dailyRoute: () => request("/daily-route/"),
-  dailySummary: (goal = 12000) => request(`/daily-summary/?goal=${goal}`),
-  heatmap: () => request("/heatmap-data/"),
-  weeklyForecast: () => request("/weekly-forecast/"),
-  records: {
-    list: () => request("/records/"),
-    create: (payload) => request("/records/", { method: "POST", body: JSON.stringify(payload) }),
-  },
+    http("/auth/login/", { method: "POST", body: JSON.stringify(payload) }),
+  me: () => http("/auth/me/"),
+
+  // ダミーデータ（バックエンドの API に合わせる）
+  dailyRoute: () => http("/daily-route/"),
+  dailySummary: (goal = 12000) => http(`/daily-summary/?goal=${goal}`),
+  heatmap: () => http("/heatmap-data/"),
+  weekly: () => http("/weekly-forecast/"),
 };
+
+export { BASE as API_BASE };
