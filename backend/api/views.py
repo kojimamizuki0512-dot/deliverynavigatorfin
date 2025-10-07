@@ -1,7 +1,10 @@
-from datetime import datetime, date
+from datetime import date
 import hashlib, random
 
 from django.contrib.auth.models import User
+from django.http import HttpResponse
+from django.views import View
+
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -13,12 +16,21 @@ from .serializers import RegisterSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-# ===== 認証系 =====
 
+# ===== ルート用 "必ず200" ヘルス =====
+class RootOk(View):
+    """
+    / に対して GET/HEAD どちらも 200 を即返す。
+    テンプレ/静的/DB に一切依存しないため、デプロイ直後でも確実に通る。
+    """
+    def get(self, request, *args, **kwargs):
+        return HttpResponse("ok", content_type="text/plain")
+    def head(self, request, *args, **kwargs):
+        return HttpResponse("", content_type="text/plain")
+
+
+# ===== 認証系 =====
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    ログイン時の username に email が来てもOKにする。
-    """
     def validate(self, attrs):
         username = attrs.get(self.username_field)
         if username and "@" in username:
@@ -53,15 +65,16 @@ class MeView(APIView):
         u = request.user
         return Response({"id": u.id, "username": u.username, "email": u.email, "first_name": u.first_name})
 
-# ===== ヘルスチェック =====
+
+# ===== ヘルスチェック（API配下でも提供） =====
 class Healthz(APIView):
     permission_classes = [AllowAny]
     def get(self, request):
         return Response({"status": "ok", "service": "deliverynavigatorfin"})
 
+
 # ====== ユーザー固有のダミー生成 ======
 def _rng_for_user(user, label: str) -> random.Random:
-    # ユーザーID + きょうの日付 + ラベルから安定シード
     seed_src = f"{user.id}|{date.today().isoformat()}|{label}"
     seed = int(hashlib.sha256(seed_src.encode()).hexdigest(), 16) % (2**32)
     return random.Random(seed)
@@ -70,13 +83,13 @@ def _money_for_user(user, base: int, spread: int, label: str) -> int:
     rng = _rng_for_user(user, label)
     return max(0, base + rng.randint(-spread, spread))
 
+
 # ====== 既存ダミーAPI（認証必須 & ユーザー固有） ======
 class DailyRoute(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
         user = request.user
         rng = _rng_for_user(user, "route")
-        # ベース構成は固定、位置や文言に微妙な差を出す
         timeline = [
             {"time": "18:00", "icon": "pin",   "text": "Stay in Dogenzaka cluster"},
             {"time": "18:30", "icon": "move",  "text": "Reposition to Ebisu"},
@@ -85,10 +98,8 @@ class DailyRoute(APIView):
             {"time": "20:00", "icon": "pin",   "text": "Shift to East Gate"},
             {"time": "20:30", "icon": "bolt",  "text": "Peak around station"},
         ]
-        # ランダムに一言添える（ユーザーごと日ごとで安定）
         pep = rng.choice(["Go!", "Nice pace", "Hold position", "Boost soon", "Green surge"])
         predicted = _money_for_user(user, base=13800, spread=1200, label="predicted")
-
         data = {
             "recommended_area": rng.choice(["Shibuya", "Ebisu", "Meguro", "Daikanyama"]),
             "predicted_daily_income": predicted,
@@ -119,10 +130,9 @@ class HeatmapData(APIView):
     def get(self, request):
         user = request.user
         rng = _rng_for_user(user, "heat")
-        # ダミーポイント（ユーザーで強度が少し変わる）
         points = []
         base_lat, base_lng = 35.6581, 139.7017
-        for i in range(12):
+        for _ in range(12):
             points.append({
                 "lat": base_lat + rng.uniform(-0.02, 0.02),
                 "lng": base_lng + rng.uniform(-0.02, 0.02),
