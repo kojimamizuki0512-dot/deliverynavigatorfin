@@ -1,29 +1,31 @@
 from django.urls import path
-
 from .views import (
-    RootOk, Healthz,
-    RegisterView, LoginView, MeView,
-    GuestInitView, GuestProfileView, RecordsView,
-    DailyRouteView, DailySummaryView, HeatmapDataView, WeeklyForecastView,
+    RegisterView,
+    LoginView,
+    MeView,
+    DailyRouteView,
+    DailySummaryView,
+    HeatmapDataView,
+    WeeklyForecastView,
+    PublicDailyRouteView,
+    PublicDailySummaryView,
+    PublicHeatmapDataView,
 )
 
 urlpatterns = [
-    path("", RootOk.as_view()),
-    path("healthz/", Healthz.as_view()),
-
-    # Auth（任意）
+    # 認証
     path("auth/register/", RegisterView.as_view()),
     path("auth/login/", LoginView.as_view()),
     path("auth/me/", MeView.as_view()),
 
-    # Guest
-    path("guest/init/", GuestInitView.as_view()),
-    path("guest/profile/", GuestProfileView.as_view()),
-    path("records/", RecordsView.as_view()),
-
-    # Dummy data
+    # 業務API（要ログイン）
     path("daily-route/", DailyRouteView.as_view()),
     path("daily-summary/", DailySummaryView.as_view()),
     path("heatmap-data/", HeatmapDataView.as_view()),
     path("weekly-forecast/", WeeklyForecastView.as_view()),
+
+    # デモAPI（未ログインOK）
+    path("public/daily-route/", PublicDailyRouteView.as_view()),
+    path("public/daily-summary/", PublicDailySummaryView.as_view()),
+    path("public/heatmap-data/", PublicHeatmapDataView.as_view()),
 ]

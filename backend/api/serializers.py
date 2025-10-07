@@ -1,53 +1,35 @@
 from django.contrib.auth.models import User
-from django.contrib.auth.password_validation import validate_password
+from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
-from .models import GuestProfile, Record
 
-
-# ===== 既存のログイン/登録 =====
-class RegisterSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(required=True)
-    email = serializers.EmailField(required=False, allow_blank=True, default="")
-    password = serializers.CharField(write_only=True, required=True)
-
-    class Meta:
-        model = User
-        fields = ("username", "email", "password")
-
-    def validate_password(self, value):
-        # 8文字以上の軽いチェック（厳密でなくてOKに）
-        if len(value) < 8:
-            raise serializers.ValidationError("パスワードは8文字以上にしてください。")
-        # Djangoのバリデータ（ゆるくしたいならコメントアウト可）
-        try:
-            validate_password(value)
-        except Exception:
-            # 厳しすぎる場合は素通ししたいので無視
-            pass
-        return value
+class RegisterSerializer(serializers.Serializer):
+    # メールは任意。空でもOK
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    # パスワードは緩め（6文字以上）に
+    password = serializers.CharField(min_length=6, write_only=True)
 
     def create(self, validated_data):
-        return User.objects.create_user(
-            username=validated_data["username"],
-            email=validated_data.get("email", ""),
-            password=validated_data["password"],
+        email = (validated_data.get("email") or "").strip()
+        password = validated_data["password"]
+
+        # ユーザー名は自動採番。メールがあれば@前、なければ userxxxx
+        base = email.split("@")[0] if email else f"user{get_random_string(6)}"
+        username = base
+        i = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base}{i}"
+            i += 1
+
+        user = User.objects.create_user(
+            username=username,
+            email=email or "",
+            password=password,
         )
+        return user
 
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField()
+    # メール or ユーザー名、どちらでもOK
+    identifier = serializers.CharField()
     password = serializers.CharField()
-
-
-# ===== ゲスト用 =====
-class GuestProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = GuestProfile
-        fields = ("guest_id", "nickname", "created_at", "updated_at")
-
-
-class RecordSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Record
-        fields = ("id", "date", "app_name", "amount", "distance_km", "note", "created_at")
