@@ -1,19 +1,23 @@
-from pathlib import Path
 import os
+from pathlib import Path
 from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key")
-DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+# ==== 基本 ====
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-change-me")
+DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 
-ALLOWED_HOSTS = [
-    h.strip() for h in os.environ.get(
-        "ALLOWED_HOSTS",
-        "localhost,127.0.0.1"
-    ).split(",") if h.strip()
-]
+# ---- ALLOWED_HOSTS を絶対に許可（env 未設定でもフォールバック）----
+_env_hosts = os.getenv("ALLOWED_HOSTS", "").strip()
+if _env_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in _env_hosts.split(",") if h.strip()]
+else:
+    # Railway のProvidedドメインを拾えない場合でも確実に通す
+    # デモ用途なので '*'。本番は明示列挙に戻す。
+    ALLOWED_HOSTS = ["*"]
 
+# ==== アプリ ====
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -27,12 +31,12 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -40,6 +44,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "deliverynavigatorfin.urls"
 
+# Admin が要求するテンプレ設定（最低限）
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -58,6 +63,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "deliverynavigatorfin.wsgi.application"
 
+# ==== DB ====
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -65,6 +71,7 @@ DATABASES = {
     }
 }
 
+# ==== パスワード ====
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -75,50 +82,43 @@ AUTH_PASSWORD_VALIDATORS = [
 LANGUAGE_CODE = "ja"
 TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
-USE_TZ = True
+USE_TZ = False  # SQLite なのでオフでもOK（お好みで）
 
+# ==== 静的ファイル（WhiteNoise）====
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# ----- CORS/CSRF -----
-FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN")
-if FRONTEND_ORIGIN:
-    CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN]
-    CSRF_TRUSTED_ORIGINS = [FRONTEND_ORIGIN]
-else:
-    CORS_ALLOW_ALL_ORIGINS = True
-
-CORS_ALLOW_HEADERS = list(os.environ.get("CORS_ALLOW_HEADERS", "").split(",")) or [
-    "accept",
-    "accept-encoding",
-    "authorization",
-    "content-type",
-    "origin",
-    "user-agent",
-    "x-csrftoken",
-    "x-requested-with",
-]
-
-# ----- DRF / JWT -----
+# ==== REST / JWT ====
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
+    "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
-    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    ],
+    # ビューで個別に Permission を設定しているのでデフォルトは AllowAny
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",
+    ],
+    "DEFAULT_RENDERER_CLASSES": [
+        "rest_framework.renderers.JSONRenderer",
+    ],
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": False,
-    "ALGORITHM": "HS256",
-    "SIGNING_KEY": SECRET_KEY,
-    "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# ==== CORS / CSRF ====
+_front = os.getenv("FRONTEND_ORIGIN", "").strip().rstrip("/")
+_back = os.getenv("BACKEND_ORIGIN", "").strip().rstrip("/")
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [o for o in [_front] if o]
+CSRF_TRUSTED_ORIGINS = [o for o in [_front, _back] if o]
+
+# ==== 逆プロキシ越しのHTTPSを正しく認識 ====
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# 追加のセキュリティ（任意）
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
