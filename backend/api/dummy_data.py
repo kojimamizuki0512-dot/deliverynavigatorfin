@@ -1,80 +1,74 @@
+# backend/api/dummy_data.py
+from __future__ import annotations
 from datetime import datetime, timedelta
-import random
 
-# 渋谷周辺アンカー（左上UIの文脈）
-ANCHORS = [
-    (35.6595,139.7005,"Dogenzaka cluster"),
-    (35.6478,139.7094,"Ebisu"),
-    (35.6660,139.7136,"Daikanyama"),
-    (35.6467,139.7090,"Hiroo"),
-    (35.6520,139.7140,"Shibuya East")
-]
-RESTAURANTS = [
-    "Uobei Sushi","Green Bowl","Curry Gold","Ramen Hachi","Burger Base",
-    "Tempura Hana","Cafe Clover","Udon Mori","Yakitori Gen","Pizza Aoi"
-]
-
-def _restaurants(n=3):
-    items = random.sample(RESTAURANTS, k=min(n, len(RESTAURANTS)))
-    return [{"name": r, "rating": round(random.uniform(3.6,4.8),1)} for r in items]
-
-def heatmap_points():
-    random.seed(42)
-    pts = []
-    for _ in range(80):
-        lat0,lng0,_ = random.choice(ANCHORS)
-        pts.append({
-            "lat": lat0 + random.uniform(-0.012,0.012),
-            "lng": lng0 + random.uniform(-0.012,0.012),
-            "intensity": round(random.uniform(0.25,1.0),2),
-            "popular_restaurants": _restaurants(random.randint(2,4))
-        })
-    return pts
-
-def daily_route():
+# 30分刻みのタイムラインを返す
+def make_daily_route() -> dict:
     now = datetime.now().replace(second=0, microsecond=0)
-    # 30分刻みタイムライン & アイコン
-    steps = [
-        ("bag","Stay in Dogenzaka cluster"),
-        ("pin","Reposition to Ebisu"),
-        ("flash","Peak around station"),
-        ("bag","Wait near hotspot"),
-        ("pin","Shift to East Gate"),
-        ("flash","Peak around station"),
+    base = now.replace(minute=0)
+    labels = [
+        "Stay in Dogenzaka cluster",
+        "Reposition to Ebisu",
+        "Peak around station",
+        "Wait near hotspot",
+        "Shift to East Gate",
+        "Peak around station",
     ]
+    icons = ["pin", "move", "bolt", "pause", "move", "bolt"]
     timeline = []
-    start0 = now.replace(minute=0)
-    for i,(icon,label) in enumerate(steps):
-        s = start0 + timedelta(minutes=30*i)
-        e = s + timedelta(minutes=30)
-        timeline.append({"start": s.strftime("%H:%M"), "end": e.strftime("%H:%M"), "action": label, "icon": icon})
+    for i, (label, icon) in enumerate(zip(labels, icons)):
+        t = base + timedelta(minutes=30 * (i + 1))
+        timeline.append({"time": t.strftime("%H:%M"), "label": label, "icon": icon})
     return {
-        "date": now.strftime("%Y-%m-%d"),
-        "recommended_area": "Dogenzaka",
-        "predicted_daily_earnings": random.randint(11000,14000),
-        "timeline": timeline
+        "recommended_area": "Shibuya",
+        "predicted_income": 13889,  # ¥表記はフロント側
+        "timeline": timeline,
     }
 
-def daily_summary(goal=12000):
-    hours = round(random.uniform(3.5,6.0),1)
-    jobs = random.randint(8,16)
-    revenue = random.randint(6000,14000)
-    progress = min(100, int(revenue/max(goal,1)*100))
+# 日次サマリー（目標額に対する進捗も返す）
+def make_daily_summary(goal: int = 12000) -> dict:
+    total = 9868
+    hours = 4.2
+    count = 16
+    avg_hourly = round(total / hours, 1)
+    progress = min(100, int(total / goal * 100)) if goal else 0
     return {
-        "goal": goal, "revenue": revenue, "jobs": jobs,
-        "hours": hours, "avg_hourly": int(revenue/max(hours,0.1)),
-        "progress_percent": progress
+        "total": total,
+        "count": count,
+        "avg_hourly": avg_hourly,
+        "hours": hours,
+        "goal": goal,
+        "progress": progress,
     }
 
-def weekly_forecast():
+# ヒートマップ用ポイント
+def make_heatmap_points() -> dict:
+    points = [
+        {
+            "lat": 35.659, "lng": 139.700, "intensity": 0.9,
+            "top_restaurants": ["Ichiran", "Uobei", "Afuri"],
+        },
+        {
+            "lat": 35.647, "lng": 139.709, "intensity": 0.7,
+            "top_restaurants": ["Shake Shack", "Burger Mania"],
+        },
+        {
+            "lat": 35.667, "lng": 139.706, "intensity": 0.6,
+            "top_restaurants": ["Torikizoku", "Hidakaya"],
+        },
+    ]
+    return {"points": points}
+
+# 週間予測（天気＋需要）
+def make_weekly_forecast() -> dict:
     today = datetime.now()
     days = []
     for i in range(7):
         d = today + timedelta(days=i)
         days.append({
             "date": d.strftime("%Y-%m-%d"),
-            "weekday": "月火水木金土日"[d.weekday()],
-            "weather": random.choice(["sunny","cloudy","rainy"]),
-            "demand_level": random.randint(1,5)
+            "weekday": d.strftime("%a"),
+            "weather": "Clouds" if i % 3 else "Rain",
+            "demand_level": "high" if i % 2 == 0 else "mid",
         })
     return {"days": days}
