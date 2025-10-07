@@ -1,92 +1,56 @@
 const API_BASE = import.meta.env.VITE_API_BASE;
 
-function getAccessToken() {
-  return localStorage.getItem("accessToken");
-}
-function getRefreshToken() {
-  return localStorage.getItem("refreshToken");
-}
-function setTokens({ access, refresh }) {
-  if (access) localStorage.setItem("accessToken", access);
-  if (refresh) localStorage.setItem("refreshToken", refresh);
-}
-export function clearTokens() {
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("refreshToken");
-}
-
-async function request(path, opts = {}, retry = true) {
-  const headers = {
-    "Content-Type": "application/json",
-    ...(opts.headers || {}),
-  };
-  const token = getAccessToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
-  if (res.status === 401 && retry && getRefreshToken()) {
-    // try refresh
-    const r = await fetch(`${API_BASE}/api/auth/refresh/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh: getRefreshToken() }),
-    });
-    if (r.ok) {
-      const data = await r.json();
-      setTokens({ access: data.access });
-      return request(path, opts, false);
+// ゲストID（端末固有）をローカルに保持
+function getGuestId() {
+  let id = localStorage.getItem("dn_guest_id");
+  if (!id) {
+    if (crypto?.randomUUID) {
+      id = crypto.randomUUID();
     } else {
-      clearTokens();
+      // 簡易UUID
+      id = "gid-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     }
+    localStorage.setItem("dn_guest_id", id);
   }
-  return res;
+  return id;
 }
 
-export const api = {
-  // auth
-  async register({ email, password, name }) {
-    const res = await request(`/api/auth/register/`, {
-      method: "POST",
-      body: JSON.stringify({ email, password, first_name: name }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-  },
-  async login({ emailOrUsername, password }) {
-    const res = await request(`/api/auth/login/`, {
-      method: "POST",
-      body: JSON.stringify({ username: emailOrUsername, password }),
-    }, false);
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    setTokens({ access: data.access, refresh: data.refresh });
-    return data;
-  },
-  async me() {
-    const res = await request(`/api/auth/me/`);
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-  },
+function headers(json = true) {
+  const h = {
+    "X-Guest-Id": getGuestId(),
+  };
+  if (json) h["Content-Type"] = "application/json";
+  return h;
+}
 
-  // data
-  async dailyRoute() {
-    const r = await request(`/api/daily-route/`);
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
-  },
-  async dailySummary(goal = 12000) {
-    const r = await request(`/api/daily-summary/?goal=${goal}`);
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
-  },
-  async heatmapData() {
-    const r = await request(`/api/heatmap-data/`);
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
-  },
-  async weeklyForecast() {
-    const r = await request(`/api/weekly-forecast/`);
-    if (!r.ok) throw new Error(await r.text());
-    return r.json();
-  },
+async function http(url, opts = {}) {
+  const res = await fetch(`${API_BASE}${url}`, {
+    ...opts,
+    headers: { ...(opts.headers || {}), ...headers(opts.json !== false) },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
+}
+
+// ===== ゲスト =====
+export const guest = {
+  init: (nickname = "") =>
+    http(`/api/guest/init/`, { method: "POST", body: JSON.stringify({ nickname }) }),
+  profile: () => http(`/api/guest/profile/`),
 };
+
+// ===== 記録 =====
+export const records = {
+  list: () => http(`/api/records/`),
+  create: (payload) => http(`/api/records/`, { method: "POST", body: JSON.stringify(payload) }),
+};
+
+// ===== 既存ダミーAPI =====
+export const dailyRoute = () => http(`/api/daily-route/`);
+export const dailySummary = (goal) => http(`/api/daily-summary/?goal=${goal}`);
+export const heatmapData = () => http(`/api/heatmap-data/`);
+export const weeklyForecast = () => http(`/api/weekly-forecast/`);
