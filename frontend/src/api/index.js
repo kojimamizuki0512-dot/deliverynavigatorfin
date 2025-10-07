@@ -1,59 +1,77 @@
-const BASE = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "") || "";
+const API_BASE = import.meta.env.VITE_API_BASE?.replace(/\/+$/, ""); // 終端スラ無し
 
-function authHeaders(token) {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+let _token = localStorage.getItem("token") || "";
+
+export function setToken(t) {
+  _token = t || "";
+  if (_token) localStorage.setItem("token", _token);
+  else localStorage.removeItem("token");
 }
 
-// --- Auth ---
-export async function register({ email, password }) {
-  const res = await fetch(`${BASE}/api/auth/register/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+export function getToken() {
+  return _token;
+}
+
+async function req(path, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  headers.set("Content-Type", "application/json");
+  const t = getToken();
+  if (t) headers.set("Authorization", `Bearer ${t}`);
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...opts,
+    headers,
+    credentials: "omit"
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "register failed");
+
+  // 401は呼び出し側で扱いやすいように明示
+  if (res.status === 401) {
+    throw new Error("AUTH_401");
   }
-  return res.json();
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP_${res.status}:${text.slice(0,200)}`);
+  }
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) return res.json();
+  return res.text();
 }
 
-export async function login({ identifier, password }) {
-  const res = await fetch(`${BASE}/api/auth/login/`, {
+// ---- Auth ----
+export async function apiRegister({ username = "", email = "", password }) {
+  return req("/api/auth/register/", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identifier, password }),
+    body: JSON.stringify({ username, email, password })
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
-export async function me(token) {
-  const res = await fetch(`${BASE}/api/auth/me/`, {
-    headers: authHeaders(token),
+export async function apiLogin({ username, password }) {
+  const data = await req("/api/auth/login/", {
+    method: "POST",
+    body: JSON.stringify({ username, password })
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  setToken(data.access);
+  return data;
 }
 
-// --- Data (fallback to /public when not authed) ---
-export async function dailyRoute(token) {
-  const path = token ? "/api/daily-route/" : "/api/public/daily-route/";
-  const res = await fetch(`${BASE}${path}`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+export async function apiMe() {
+  return req("/api/auth/me/");
 }
 
-export async function dailySummary(goal, token) {
-  const path = token ? "/api/daily-summary/" : "/api/public/daily-summary/";
-  const res = await fetch(`${BASE}${path}?goal=${goal}`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+// ---- Data ----
+export async function apiDailyRoute() {
+  return req("/api/daily-route/");
 }
 
-export async function heatmapData(token) {
-  const path = token ? "/api/heatmap-data/" : "/api/public/heatmap-data/";
-  const res = await fetch(`${BASE}${path}`, { headers: authHeaders(token) });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+export async function apiDailySummary(goal = 12000) {
+  const q = new URLSearchParams({ goal: String(goal) });
+  return req(`/api/daily-summary/?${q}`);
+}
+
+export async function apiHeatmap() {
+  return req("/api/heatmap-data/");
+}
+
+export async function apiWeeklyForecast() {
+  return req("/api/weekly-forecast/");
 }
