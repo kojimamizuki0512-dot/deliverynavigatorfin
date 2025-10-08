@@ -25,19 +25,26 @@ export function clearToken() {
 
 // 共通 fetch（エラーは呼び出し側でハンドリング）
 // path は '/api/xxx' の “絶対” or 'xxx' の “相対”（相対は /api/xxx に直す）
+// opts.noAuth === true の場合は Authorization ヘッダを付けない（/auth/login, /auth/register 用）
 async function apiFetch(path, opts = {}) {
+  const { noAuth, ...rest } = opts;
+
   const url = path.startsWith("http")
     ? path
     : `${API_BASE}${path.startsWith("/") ? path : `/api/${path}`}`;
 
-  const headers = new Headers(opts.headers || {});
+  const headers = new Headers(rest.headers || {});
   const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (!headers.has("Content-Type") && opts.body && !(opts.body instanceof FormData)) {
+
+  if (!noAuth && token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (!headers.has("Content-Type") && rest.body && !(rest.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(url, { ...opts, headers, credentials: "include" });
+  const res = await fetch(url, { ...rest, headers, credentials: "include" });
+
   if (!res.ok) {
     // 401 は呼び出し側でログアウト誘導
     const text = await res.text().catch(() => "");
@@ -50,25 +57,31 @@ async function apiFetch(path, opts = {}) {
     }
     throw err;
   }
+
   const ct = res.headers.get("content-type") || "";
   return ct.includes("application/json") ? res.json() : res.text();
 }
 
 export const api = {
   // ヘルスチェック（UI では黙って使う。アラートは出さない）
-  healthz: () => apiFetch("/api/healthz/"),
+  // ※本番の backend では /healthz/ が正解。/api/healthz/ は無し。
+  healthz: () => apiFetch("/healthz/"),
 
   // 認証
   register: (username, password, email) =>
     apiFetch("/api/auth/register/", {
       method: "POST",
-      body: JSON.stringify({ username, password, email })
+      body: JSON.stringify({ username, password, email }),
+      noAuth: true, // ★ Authorization を付けない
     }),
+
   login: (username, password) =>
     apiFetch("/api/auth/login/", {
       method: "POST",
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password }),
+      noAuth: true, // ★ Authorization を付けない
     }),
+
   me: () => apiFetch("/api/auth/me/"),
 
   // データ取得（ダミーAPI）
@@ -79,6 +92,6 @@ export const api = {
   createRecord: (payload) =>
     apiFetch("/api/records/", {
       method: "POST",
-      body: JSON.stringify(payload)
-    })
+      body: JSON.stringify(payload),
+    }),
 };
