@@ -1,5 +1,8 @@
 from django.contrib.auth import authenticate
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
+from django.utils import timezone
+from datetime import date, datetime
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,6 +14,7 @@ from .dummy_data import (
     make_heatmap_points,
     make_weekly_forecast,
 )
+from .models import Record
 
 # ---- ヘルス/ルート ----
 class RootOk(APIView):
@@ -92,3 +96,47 @@ class WeeklyForecastView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     def get(self, request):
         return Response(make_weekly_forecast())
+
+# ---- 月間合計API（新規）----
+class MonthlyTotalView(APIView):
+    """
+    GET /api/monthly-total/?year=YYYY&month=MM
+    - 認証必須
+    - 指定がなければサーバ側の現在の年月で集計
+    - 応答例: {"year": 2025, "month": 10, "total": 12345, "count": 7}
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # 年月の解釈（未指定なら現在）
+        now = timezone.localtime(timezone.now())
+        try:
+            year = int(request.GET.get("year", now.year))
+            month = int(request.GET.get("month", now.month))
+            if month < 1 or month > 12:
+                raise ValueError
+        except ValueError:
+            return Response({"detail": "year/month の指定が不正です。"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 月初と翌月初（[start, end) で絞る）
+        start = date(year, month, 1)
+        if month == 12:
+            end = date(year + 1, 1, 1)
+        else:
+            end = date(year, month + 1, 1)
+
+        qs = Record.objects.filter(
+            owner=request.user,
+            created_at__gte=start,
+            created_at__lt=end,
+        )
+        agg = qs.aggregate(total=Sum("value"))
+        total = int(agg["total"] or 0)
+        count = qs.count()
+
+        return Response({
+            "year": year,
+            "month": month,
+            "total": total,
+            "count": count,
+        })
