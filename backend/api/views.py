@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
-from datetime import date, datetime
+from datetime import date
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -97,7 +97,7 @@ class WeeklyForecastView(APIView):
     def get(self, request):
         return Response(make_weekly_forecast())
 
-# ---- 月間合計API（新規）----
+# ---- 月間合計API（修正版）----
 class MonthlyTotalView(APIView):
     """
     GET /api/monthly-total/?year=YYYY&month=MM
@@ -109,10 +109,10 @@ class MonthlyTotalView(APIView):
 
     def get(self, request):
         # 年月の解釈（未指定なら現在）
-        now = timezone.localtime(timezone.now())
+        today = timezone.now().date()  # naive/aware の違いに依存しない
         try:
-            year = int(request.GET.get("year", now.year))
-            month = int(request.GET.get("month", now.month))
+            year = int(request.GET.get("year", today.year))
+            month = int(request.GET.get("month", today.month))
             if month < 1 or month > 12:
                 raise ValueError
         except ValueError:
@@ -120,10 +120,7 @@ class MonthlyTotalView(APIView):
 
         # 月初と翌月初（[start, end) で絞る）
         start = date(year, month, 1)
-        if month == 12:
-            end = date(year + 1, 1, 1)
-        else:
-            end = date(year, month + 1, 1)
+        end = date(year + (month // 12), ((month % 12) + 1), 1)
 
         qs = Record.objects.filter(
             owner=request.user,
