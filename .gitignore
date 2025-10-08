@@ -1,46 +1,20 @@
-# --- Python / Django ---
-*.pyc
-__pycache__/
-*.pyo
-*.pyd
-*.sqlite3
-db.sqlite3
-.env
-.env.*
-.vscode/
-.idea/
-.pytest_cache/
-staticfiles/
-media/
-
-# venv
-venv/
-.venv/
-backend/.venv/
-
-# --- Node / Vite / React ---
-node_modules/
-**/node_modules/
-dist/
+# ==== Node / Vite ====
+frontend/node_modules/
+frontend/.vite/
 frontend/dist/
-.vite/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 
-# Env files (frontend/backend)
-frontend/.env
-frontend/.env.*
-backend/.env
-backend/.env.*
+# ==== Python ====
+backend/.venv/
+**/__pycache__/
+*.py[cod]
 
-# OS / Editor
+# ==== OS / Editor ====
 .DS_Store
 Thumbs.db
-*.swp
-*.swo
+.vscode/
+.idea/
 
-# Railway / misc cache
-*.cache
+# ==== Env / Misc ====
+.env
+*.env
+railway.json
