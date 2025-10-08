@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api, getToken, clearToken } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
+import SwipeDeck from "./components/SwipeDeck.jsx";
 
 // ===== ローカル保存のキー =====
 const GOAL_KEY = "dnf_goal_monthly";
@@ -34,21 +35,19 @@ export default function App() {
     return Number.isFinite(v) && v > 0 ? v : 120000; // 初期値: 12万円
   });
 
-  // 今月達成額（とりあえず0。次の手順でAPI/集計に接続）
+  // 今月達成額（次の手順でAPI/集計に接続する。今は0のまま）
   const [monthTotal, setMonthTotal] = useState(0);
 
   // ===== 初期化（アラートは出さない） =====
   useEffect(() => {
     (async () => {
       try {
-        // 既存トークンで /me を見てログインを引き継ぐ
         if (getToken()) {
           const m = await api.me();
           setMe(m);
           await fetchAll();
         }
       } catch {
-        // トークンが無効なら消しておく（AuthGate が未ログイン画面を出す）
         clearToken();
       } finally {
         setLoading(false);
@@ -62,7 +61,7 @@ export default function App() {
       const r = await api.dailyRoute();
       setRoute(Array.isArray(r) ? r : (r?.route || []));
       // 次の手順で実績APIに接続し、今月合計を更新する
-      setMonthTotal((prev) => prev); // いまはダミー（0のまま）
+      setMonthTotal((prev) => prev);
     } catch (e) {
       setMsg("データ取得に失敗しました。");
     }
@@ -123,50 +122,61 @@ export default function App() {
       {!me ? (
         <div className="text-neutral-300">認証を確認中…</div>
       ) : (
-        <div className="grid grid-cols-1 gap-6">
+        <>
           {msg && (
-            <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200">
+            <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200 mb-4">
               {msg}
             </div>
           )}
 
-          {/* === Cockpit Dashboard（デモ） === */}
-          <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-neutral-400">Cockpit Dashboard</div>
-              <button
-                onClick={changeGoal}
-                className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10">
-                目標を変更
-              </button>
-            </div>
-            <div className="text-2xl font-semibold mb-1">
-              月間目標 ¥{monthlyGoal.toLocaleString()}
-            </div>
-            <div className="text-sm text-neutral-400 mb-2">
-              今月の達成額：¥{monthTotal.toLocaleString()}（{progressPct}%）
-            </div>
-            <div className="h-2 w-full rounded bg-white/10 overflow-hidden">
-              <div
-                className="h-2 bg-emerald-500 transition-all"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-          </section>
+          {/* ===== スワイプデッキ（3枚） ===== */}
+          <SwipeDeck className="relative" initialIndex={0}>
+            {/* --- 1枚目：Cockpit + AI Route（デモ） --- */}
+            <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+              {/* Cockpit */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm text-neutral-400">Cockpit Dashboard</div>
+                <button
+                  onClick={changeGoal}
+                  className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10">
+                  目標を変更
+                </button>
+              </div>
+              <div className="text-2xl font-semibold mb-1">
+                月間目標 ¥{monthlyGoal.toLocaleString()}
+              </div>
+              <div className="text-sm text-neutral-400 mb-2">
+                今月の達成額：¥{monthTotal.toLocaleString()}（{progressPct}%）
+              </div>
+              <div className="h-2 w-full rounded bg-white/10 overflow-hidden mb-4">
+                <div
+                  className="h-2 bg-emerald-500 transition-all"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
 
-          {/* === AI Route Suggestion（デモ／既存の RouteCard を使用） === */}
-          <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-            <div className="text-sm text-neutral-400 mb-2">AI Route Suggestion（デモ）</div>
-            <RouteCard route={route} />
-          </section>
+              {/* AI Route Suggestion（デモ用に既存 RouteCard を内包） */}
+              <div className="text-sm text-neutral-400 mb-2">AI Route Suggestion（デモ）</div>
+              <RouteCard route={route} />
+            </section>
 
-          {/* === 実績入力カード（既存） === */}
-          <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-            <RecordInputCard />
-          </section>
+            {/* --- 2枚目：実績入力 --- */}
+            <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+              <RecordInputCard />
+            </section>
 
-          {/* グラフカードは次の手順で追加（Recharts 導入） */}
-        </div>
+            {/* --- 3枚目：履歴グラフ（プレースホルダー） --- */}
+            <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+              <div className="text-sm text-neutral-400 mb-2">Summary（グラフ）</div>
+              <div className="h-40 grid place-items-center text-neutral-400">
+                グラフカードは次の手順で追加（Recharts導入）
+              </div>
+            </section>
+          </SwipeDeck>
+          <div className="text-center text-xs text-neutral-500 mt-2">
+            ← スワイプ / ドラッグでカード切替 →
+          </div>
+        </>
       )}
     </div>
   );
