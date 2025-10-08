@@ -8,13 +8,13 @@ backend/.venv/
 **/__pycache__/
 *.py[cod]
 
-# ==== OS / Editor ====
+# ==== OS/Editor ====
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 
-# ==== Env / Misc ====
+# ==== Env ====
 .env
 *.env
 railway.json

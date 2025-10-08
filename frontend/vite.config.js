@@ -9,10 +9,7 @@ export default defineConfig({
   },
   preview: {
     host: true,
-    // Railway では $PORT をスクリプト側で渡すのでここは固定不要
-    allowedHosts: true
+    allowedHosts: true  // ← Railwayの *.up.railway.app でブロックしない
   },
-  build: {
-    outDir: "dist"
-  }
+  build: { outDir: "dist" }
 });
