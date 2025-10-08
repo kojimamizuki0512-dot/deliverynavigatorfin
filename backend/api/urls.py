@@ -1,7 +1,8 @@
 from django.urls import path
 from .views import (
     RegisterView, LoginView, MeView,
-    DailyRouteView, DailySummaryView, HeatmapDataView, WeeklyForecastView
+    DailyRouteView, DailySummaryView, HeatmapDataView, WeeklyForecastView,
+    MonthlyTotalView,  # ← 追加
 )
 
 urlpatterns = [
@@ -12,4 +13,5 @@ urlpatterns = [
     path("daily-summary/", DailySummaryView.as_view()),
     path("heatmap-data/",  HeatmapDataView.as_view()),
     path("weekly-forecast/", WeeklyForecastView.as_view()),
+    path("monthly-total/", MonthlyTotalView.as_view()),  # ← 追加
 ]
