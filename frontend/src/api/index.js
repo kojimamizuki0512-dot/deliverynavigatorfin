@@ -1,80 +1,97 @@
-// ==== API クライアント ====
-// フロント -> バックエンドの呼び出しを一箇所に集約
-// App.jsx からは { api, setToken, getToken } を import できます。
+// frontend/src/api/index.js
+// Vite の環境変数から API ベース URL を取得（末尾スラッシュや /api の有無を吸収）
+const raw = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
+export const API_BASE = raw.endsWith("/api") ? raw : `${raw}/api`;
 
-const BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+// ---- Token utils (App.jsx が import する想定) ----
+const TOKEN_KEY = "dn.token";
 
-// ---- Token helpers (App.jsxから使うのでexport) ----
 export function getToken() {
-  try { return localStorage.getItem("access") || ""; } catch { return ""; }
-}
-export function setToken(access, refresh) {
   try {
-    if (access) localStorage.setItem("access", access);
-    if (refresh) localStorage.setItem("refresh", refresh);
+    return localStorage.getItem(TOKEN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+export function setToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
   } catch {}
 }
 export function clearToken() {
   try {
-    localStorage.removeItem("access");
-    localStorage.removeItem("refresh");
+    localStorage.removeItem(TOKEN_KEY);
   } catch {}
 }
 
-// ---- 共通fetch ----
-async function request(path, { method = "GET", headers = {}, body } = {}) {
-  const h = { "Content-Type": "application/json", ...headers };
-  const token = getToken();
-  if (token) h["Authorization"] = `Bearer ${token}`;
+// ---- 共通 fetch ----
+async function request(path, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  headers.set("Content-Type", "application/json");
 
-  const res = await fetch(`${BASE}${path}`, { method, headers: h, body });
-  if (!res.ok) {
-    // エラー本文を拾ってメッセージ化
-    let detail = "";
-    try { detail = await res.text(); } catch {}
-    throw new Error(`${res.status} ${res.statusText} :: ${detail}`);
+  const t = getToken();
+  if (t) headers.set("Authorization", `Bearer ${t}`);
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...opts,
+    headers,
+    // JWT を使っているので cookie は不要
+    credentials: "omit",
+  });
+
+  const isJson = res.headers.get("content-type")?.includes("application/json");
+  const body = isJson ? await res.json().catch(() => ({})) : await res.text();
+
+  // 未ログインは「エラーではあるが例外にしない」で返す（初期化を止めない）
+  if (res.status === 401) {
+    return { ok: false, status: 401, data: body };
   }
-  const ct = res.headers.get("content-type") || "";
-  return ct.includes("application/json") ? res.json() : res.text();
+
+  if (!res.ok) {
+    const msg =
+      (body && body.detail) ||
+      (typeof body === "string" ? body : "Request failed");
+    const err = new Error(msg);
+    err.status = res.status;
+    err.data = body;
+    throw err;
+  }
+
+  return { ok: true, status: res.status, data: body };
 }
 
-// ---- 認証API ----
-async function register({ username, email, password }) {
-  return request("/api/auth/register/", {
-    method: "POST",
-    body: JSON.stringify({ username, email, password }),
-  });
-}
-async function login({ username, password }) {
-  const data = await request("/api/auth/login/", {
-    method: "POST",
-    body: JSON.stringify({ username, password }),
-  });
-  setToken(data.access, data.refresh);
-  return data;
-}
-async function me() { return request("/api/auth/me/"); }
-function logout() { clearToken(); }
-
-// ---- アプリデータAPI ----
-function dailyRoute()              { return request("/api/daily-route/"); }
-function dailySummary(goal = 12000){ return request(`/api/daily-summary/?goal=${goal}`); }
-function heatmap()                 { return request("/api/heatmap-data/"); }
-function weeklyForecast()          { return request("/api/weekly-forecast/"); }
-function createRecord(payload)     { return request("/api/records/", { method: "POST", body: JSON.stringify(payload) }); }
-function listRecords()             { return request("/api/records/"); }
-
-// ---- export ----
-export const auth = { register, login, me, logout };
-export const data = { dailyRoute, dailySummary, heatmap, weeklyForecast, createRecord, listRecords };
-
-// App.jsx が使う { api } も提供
+// ---- API surface ----
 export const api = {
-  ...auth,
-  ...data,
-  request,
-  BASE,
+  health() {
+    return request("/healthz/");
+  },
+  me() {
+    return request("/auth/me/");
+  },
+  register({ username, email, password }) {
+    return request("/auth/register/", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password }),
+    });
+  },
+  async login({ username, password }) {
+    const r = await request("/auth/login/", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    if (r.ok && r.data?.access) setToken(r.data.access);
+    return r;
+  },
+  dailyRoute() {
+    return request("/daily-route/");
+  },
+  dailySummary(goal = 12000) {
+    return request(`/daily-summary/?goal=${encodeURIComponent(goal)}`);
+  },
+  heatmap() {
+    return request("/heatmap-data/");
+  },
+  weeklyForecast() {
+    return request("/weekly-forecast/");
+  },
 };
-
-// default も付けておくと import api from "./api" にも対応できる
-export default api;
