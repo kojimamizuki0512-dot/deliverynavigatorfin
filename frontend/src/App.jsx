@@ -3,6 +3,9 @@ import { api, getToken, clearToken } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 
+// ===== ローカル保存のキー =====
+const GOAL_KEY = "dnf_goal_monthly";
+
 function useDeviceId() {
   // 端末ごと識別したい時に使う（いまは未使用）
   return useMemo(() => {
@@ -18,10 +21,21 @@ function useDeviceId() {
 
 export default function App() {
   useDeviceId();
-  const [me, setMe] = useState(null); // {id, username, email}
+  const [me, setMe] = useState(null);    // {id, username, email}
   const [loading, setLoading] = useState(true);
+
+  // ルート＆ダッシュボード用
   const [route, setRoute] = useState([]);
   const [msg, setMsg] = useState("");
+
+  // 月間目標（ローカル保持）
+  const [monthlyGoal, setMonthlyGoal] = useState(() => {
+    const v = Number(localStorage.getItem(GOAL_KEY));
+    return Number.isFinite(v) && v > 0 ? v : 120000; // 初期値: 12万円
+  });
+
+  // 今月達成額（とりあえず0。次の手順でAPI/集計に接続）
+  const [monthTotal, setMonthTotal] = useState(0);
 
   // ===== 初期化（アラートは出さない） =====
   useEffect(() => {
@@ -46,7 +60,9 @@ export default function App() {
     setMsg("");
     try {
       const r = await api.dailyRoute();
-      setRoute(Array.isArray(r) ? r : r?.route || []);
+      setRoute(Array.isArray(r) ? r : (r?.route || []));
+      // 次の手順で実績APIに接続し、今月合計を更新する
+      setMonthTotal((prev) => prev); // いまはダミー（0のまま）
     } catch (e) {
       setMsg("データ取得に失敗しました。");
     }
@@ -58,6 +74,19 @@ export default function App() {
     window.location.reload();
   }
 
+  // 目標金額の変更（ローカル保存）
+  function changeGoal() {
+    const v = window.prompt("月間目標金額（円）を入力してください。", String(monthlyGoal));
+    if (!v) return;
+    const n = Number(v.replace(/[^\d]/g, ""));
+    if (!Number.isFinite(n) || n <= 0) return;
+    localStorage.setItem(GOAL_KEY, String(n));
+    setMonthlyGoal(n);
+  }
+
+  // 達成率（%）
+  const progressPct = Math.max(0, Math.min(100, Math.floor((monthTotal / monthlyGoal) * 100)));
+
   if (loading) {
     return (
       <div className="min-h-screen grid place-items-center">
@@ -68,6 +97,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
+      {/* ヘッダー */}
       <header className="flex items-center justify-between mb-6">
         <div className="text-xl font-semibold">Delivery Navigator</div>
         <div className="text-sm">
@@ -76,14 +106,12 @@ export default function App() {
               <span>ようこそ、{me.username} さん</span>
               <button
                 onClick={fetchAll}
-                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700"
-              >
+                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
                 データを再取得
               </button>
               <button
                 onClick={onLogout}
-                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700"
-              >
+                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
                 ログアウト
               </button>
             </div>
@@ -91,7 +119,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* AuthGate が未ログイン時は App を表示しないため、ここでは me が null の間のみ待機表示 */}
+      {/* 未ログインの時は AuthGate 側が画面を持つので、ここは me が null の間のみ待機表示 */}
       {!me ? (
         <div className="text-neutral-300">認証を確認中…</div>
       ) : (
@@ -102,8 +130,42 @@ export default function App() {
             </div>
           )}
 
-          <RouteCard route={route} />
-          <RecordInputCard />
+          {/* === Cockpit Dashboard（デモ） === */}
+          <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-neutral-400">Cockpit Dashboard</div>
+              <button
+                onClick={changeGoal}
+                className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10">
+                目標を変更
+              </button>
+            </div>
+            <div className="text-2xl font-semibold mb-1">
+              月間目標 ¥{monthlyGoal.toLocaleString()}
+            </div>
+            <div className="text-sm text-neutral-400 mb-2">
+              今月の達成額：¥{monthTotal.toLocaleString()}（{progressPct}%）
+            </div>
+            <div className="h-2 w-full rounded bg-white/10 overflow-hidden">
+              <div
+                className="h-2 bg-emerald-500 transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </section>
+
+          {/* === AI Route Suggestion（デモ／既存の RouteCard を使用） === */}
+          <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+            <div className="text-sm text-neutral-400 mb-2">AI Route Suggestion（デモ）</div>
+            <RouteCard route={route} />
+          </section>
+
+          {/* === 実績入力カード（既存） === */}
+          <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+            <RecordInputCard />
+          </section>
+
+          {/* グラフカードは次の手順で追加（Recharts 導入） */}
         </div>
       )}
     </div>
