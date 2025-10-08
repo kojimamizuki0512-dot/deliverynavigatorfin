@@ -1,71 +1,84 @@
-// API 基底URL（末尾スラッシュなしで保持）
-const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+// ===== API ラッパ =====
 
-// トークン管理（ローカルストレージ）
+// 環境変数（Railway の Frontend Variables に VITE_API_BASE を入れておく）
+// 例: https://deliverynavigatorfin-production.up.railway.app
+const ENV_BASE = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "");
+
+// どうしても未設定だった時の最後のフォールバック（同一オリジン想定）
+const FALLBACK_BASE = "";
+
+// 最終決定
+export const API_BASE = (ENV_BASE || FALLBACK_BASE) || "";
+
+// Token の保管（localStorage に保存してページ遷移でも維持）
+const KEY = "dnf_token";
+
 export function getToken() {
-  return localStorage.getItem("token") || "";
+  return localStorage.getItem(KEY) || "";
 }
-export function setToken(token) {
-  if (token) localStorage.setItem("token", token);
-  else localStorage.removeItem("token");
+export function setToken(t) {
+  if (t) localStorage.setItem(KEY, t);
+}
+export function clearToken() {
+  localStorage.removeItem(KEY);
 }
 
-async function request(path, opts = {}) {
-  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+// 共通 fetch（エラーは呼び出し側でハンドリング）
+// path は '/api/xxx' の “絶対” or 'xxx' の “相対”（相対は /api/xxx に直す）
+async function apiFetch(path, opts = {}) {
+  const url = path.startsWith("http")
+    ? path
+    : `${API_BASE}${path.startsWith("/") ? path : `/api/${path}`}`;
+
+  const headers = new Headers(opts.headers || {});
   const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("Content-Type") && opts.body && !(opts.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers,
-    // Cookie を使わないが将来拡張に備えて
-    credentials: "include"
-  });
-
-  // 200 以外は例外化（フロントで静かに扱う）
+  const res = await fetch(url, { ...opts, headers, credentials: "include" });
   if (!res.ok) {
+    // 401 は呼び出し側でログアウト誘導
     const text = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+    const err = new Error(`HTTP ${res.status}`);
+    err.status = res.status;
+    try {
+      err.data = JSON.parse(text);
+    } catch {
+      err.data = { detail: text || "error" };
+    }
+    throw err;
   }
-  // JSON でないレスポンスにも耐性
-  try {
-    return await res.json();
-  } catch {
-    return {};
-  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
 }
 
 export const api = {
-  register({ username, email, password }) {
-    return request("/api/auth/register/", {
+  // ヘルスチェック（UI では黙って使う。アラートは出さない）
+  healthz: () => apiFetch("/api/healthz/"),
+
+  // 認証
+  register: (username, password, email) =>
+    apiFetch("/api/auth/register/", {
       method: "POST",
-      body: JSON.stringify({ username, email, password })
-    });
-  },
-  login({ username, password }) {
-    return request("/api/auth/login/", {
+      body: JSON.stringify({ username, password, email })
+    }),
+  login: (username, password) =>
+    apiFetch("/api/auth/login/", {
       method: "POST",
       body: JSON.stringify({ username, password })
-    }).then((d) => {
-      if (d?.access) setToken(d.access);
-      return d;
-    });
-  },
-  me() {
-    return request("/api/auth/me/");
-  },
-  dailyRoute() {
-    return request("/api/daily-route/");
-  },
-  dailySummary(goal = 12000) {
-    return request(`/api/daily-summary/?goal=${goal}`);
-  },
-  heatmap() {
-    return request("/api/heatmap-data/");
-  },
-  weekly() {
-    return request("/api/weekly-forecast/");
-  }
-};
+    }),
+  me: () => apiFetch("/api/auth/me/"),
 
-export { API_BASE };
+  // データ取得（ダミーAPI）
+  dailyRoute: () => apiFetch("/api/daily-route/"),
+  dailySummary: (goal = 12000) => apiFetch(`/api/daily-summary/?goal=${goal}`),
+
+  // 実績保存（バックが未実装でも UI 側でローカル保存にフォールバック）
+  createRecord: (payload) =>
+    apiFetch("/api/records/", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    })
+};

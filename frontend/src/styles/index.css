@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ダーク背景に合うスクロール隠し（任意） */
+::-webkit-scrollbar { display: none; }

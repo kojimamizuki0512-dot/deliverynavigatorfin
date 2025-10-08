@@ -1,191 +1,187 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, setToken, getToken } from "./api";
+import React, { useEffect, useMemo, useState } from "react";
+import { api, setToken, getToken, clearToken } from "./api";
+import RouteCard from "./components/RouteCard.jsx";
+import RecordInputCard from "./components/RecordInputCard.jsx";
 
 function useDeviceId() {
+  // 端末ごと識別したい時に使う（いまは未使用）
   return useMemo(() => {
-    const key = "device_id";
-    const now = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-    let id = localStorage.getItem(key);
+    const k = "dnf_device_id";
+    let id = localStorage.getItem(k);
     if (!id) {
-      id = now();
-      localStorage.setItem(key, id);
+      id = crypto.randomUUID?.() || String(Math.random()).slice(2);
+      localStorage.setItem(k, id);
     }
     return id;
   }, []);
 }
 
 export default function App() {
-  const deviceId = useDeviceId();
-  const [me, setMe] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  useDeviceId();
+  const [me, setMe] = useState(null);    // {id, username, email}
+  const [loading, setLoading] = useState(true);
+  const [route, setRoute] = useState([]);
+  const [msg, setMsg] = useState("");
 
-  // 初期化：ログイン済みチェック（失敗してもアラートは出さない）
+  // ===== 初期化（アラートは出さない） =====
   useEffect(() => {
-    const t = getToken();
-    if (!t) return;
-    api.me().then(setMe).catch(() => setMe(null));
+    (async () => {
+      try {
+        // 既存トークンで /me を見てログインを引き継ぐ
+        if (getToken()) {
+          const m = await api.me();
+          setMe(m);
+          await fetchAll();
+        }
+      } catch {
+        // トークンが無効なら消しておく（UIは未ログイン表示のまま）
+        clearToken();
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  // --- 認証 UI ---
-
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState(""); // 任意
-  const [password, setPassword] = useState("");
-
-  async function handleRegister() {
-    setBusy(true);
-    setError("");
+  async function fetchAll() {
+    setMsg("");
     try {
-      await api.register({ username, email, password });
-      const d = await api.login({ username, password });
-      if (d?.access) {
-        const m = await api.me();
-        setMe(m);
-      }
+      const r = await api.dailyRoute();
+      setRoute(Array.isArray(r) ? r : (r?.route || []));
     } catch (e) {
-      setError("登録/ログインに失敗しました。入力を見直してください。");
-    } finally {
-      setBusy(false);
+      setMsg("データ取得に失敗しました。");
     }
   }
 
-  async function handleLoginDemo() {
-    // デモログイン（ユーザー作成が面倒な時用）
-    setBusy(true);
-    setError("");
+  // ===== 認証（簡易UI） =====
+  const [auth, setAuth] = useState({ username: "", password: "", email: "" });
+  function setAuthField(k, v) { setAuth((s) => ({ ...s, [k]: v })); }
+
+  async function onRegister(e) {
+    e.preventDefault();
+    setMsg("");
     try {
-      const u = `demo_${deviceId.slice(0, 8)}`;
-      try {
-        await api.register({ username: u, email: "", password: "demo1234" });
-      } catch {
-        // 既に作成済みなら続行
-      }
-      await api.login({ username: u, password: "demo1234" });
+      await api.register(auth.username, auth.password, auth.email || undefined);
+      const tk = await api.login(auth.username, auth.password);
+      setToken(tk?.access || tk?.token);
       const m = await api.me();
       setMe(m);
-    } catch (e) {
-      setError("デモログインに失敗しました。");
-    } finally {
-      setBusy(false);
+      await fetchAll();
+    } catch (err) {
+      setMsg(err?.data?.detail || "登録/ログインに失敗しました。");
     }
   }
 
-  function logout() {
-    setToken("");
-    setMe(null);
-  }
-
-  // --- アプリ UI ---
-
-  const [route, setRoute] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [heatmap, setHeatmap] = useState([]);
-  const [weekly, setWeekly] = useState([]);
-
-  async function loadData() {
-    setBusy(true);
-    setError("");
+  async function onLogin(e) {
+    e.preventDefault();
+    setMsg("");
     try {
-      const [r, s, h, w] = await Promise.all([
-        api.dailyRoute(),
-        api.dailySummary(12000),
-        api.heatmap(),
-        api.weekly()
-      ]);
-      setRoute(r?.points || []);
-      setSummary(s || null);
-      setHeatmap(h || []);
-      setWeekly(w || []);
-    } catch (e) {
-      // ここでもアラート禁止。画面に小さく表示するだけ
-      setError("データ取得に失敗しました。時間を置いて再読み込みしてください。");
-    } finally {
-      setBusy(false);
+      const tk = await api.login(auth.username, auth.password);
+      setToken(tk?.access || tk?.token);
+      const m = await api.me();
+      setMe(m);
+      await fetchAll();
+    } catch (err) {
+      setMsg(err?.data?.detail || "ログインに失敗しました。");
     }
   }
 
-  useEffect(() => {
-    if (me) loadData();
-  }, [me]);
+  function onLogout() {
+    clearToken();
+    setMe(null);
+    setRoute([]);
+  }
 
-  if (!me) {
+  if (loading) {
     return (
-      <div style={{ maxWidth: 440, margin: "40px auto", padding: 16 }}>
-        <h2>Delivery Navigator FIN</h2>
-        <p style={{ color: "#666" }}>ログイン または 新規登録</p>
-
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          <input
-            placeholder="ユーザー名（必須）"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            placeholder="メール（任意）"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            placeholder="パスワード（8文字以上）"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-
-          <button disabled={busy} onClick={handleRegister}>
-            {busy ? "処理中..." : "登録してはじめる"}
-          </button>
-          <button disabled={busy} onClick={handleLoginDemo}>
-            {busy ? "処理中..." : "ログインを先に試す（デモ）"}
-          </button>
-          {error && <div style={{ color: "crimson", marginTop: 8 }}>{error}</div>}
-        </div>
+      <div className="min-h-screen grid place-items-center">
+        <div className="text-neutral-300">読み込み中…</div>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "32px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2>ようこそ、{me.username} さん</h2>
-        <button onClick={logout}>ログアウト</button>
-      </div>
+    <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
+      <header className="flex items-center justify-between mb-6">
+        <div className="text-xl font-semibold">Delivery Navigator</div>
+        <div className="text-sm">
+          {me ? (
+            <div className="flex items-center gap-3">
+              <span>ようこそ、{me.username} さん</span>
+              <button onClick={fetchAll}
+                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
+                データを再取得
+              </button>
+              <button onClick={onLogout}
+                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
+                ログアウト
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </header>
 
-      <div style={{ marginTop: 16 }}>
-        <button disabled={busy} onClick={loadData}>
-          {busy ? "更新中..." : "データを再取得"}
-        </button>
-        {error && <div style={{ color: "crimson", marginTop: 8 }}>{error}</div>}
-      </div>
+      {!me ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <form onSubmit={onLogin} className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+            <div className="mb-3 text-lg font-semibold">ログイン</div>
+            <label className="block mb-3 text-sm">
+              <div className="mb-1">ユーザー名</div>
+              <input
+                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+                value={auth.username}
+                onChange={(e) => setAuthField("username", e.target.value)}
+                required />
+            </label>
+            <label className="block mb-4 text-sm">
+              <div className="mb-1">パスワード</div>
+              <input
+                type="password"
+                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+                value={auth.password}
+                onChange={(e) => setAuthField("password", e.target.value)}
+                required />
+            </label>
+            <button className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">ログイン</button>
+          </form>
 
-      <section style={{ marginTop: 24 }}>
-        <h3>AIおすすめルート（ダミー）</h3>
-        <pre style={{ background: "#111", color: "#9ef", padding: 12, borderRadius: 8, overflow: "auto" }}>
-{JSON.stringify(route, null, 2)}
-        </pre>
-      </section>
+          <form onSubmit={onRegister} className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+            <div className="mb-3 text-lg font-semibold">新規登録</div>
+            <label className="block mb-3 text-sm">
+              <div className="mb-1">ユーザー名</div>
+              <input
+                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+                value={auth.username}
+                onChange={(e) => setAuthField("username", e.target.value)}
+                required />
+            </label>
+            <label className="block mb-3 text-sm">
+              <div className="mb-1">メール（任意）</div>
+              <input
+                type="email"
+                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+                value={auth.email}
+                onChange={(e) => setAuthField("email", e.target.value)} />
+            </label>
+            <label className="block mb-4 text-sm">
+              <div className="mb-1">パスワード（8文字以上）</div>
+              <input
+                type="password"
+                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+                value={auth.password}
+                onChange={(e) => setAuthField("password", e.target.value)}
+                required />
+            </label>
+            <button className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500">登録してはじめる</button>
+          </form>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6">
+          {msg && <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200">{msg}</div>}
 
-      <section style={{ marginTop: 24 }}>
-        <h3>今日のサマリ</h3>
-        <pre style={{ background: "#111", color: "#9ef", padding: 12, borderRadius: 8, overflow: "auto" }}>
-{JSON.stringify(summary, null, 2)}
-        </pre>
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <h3>ヒートマップ</h3>
-        <pre style={{ background: "#111", color: "#9ef", padding: 12, borderRadius: 8, overflow: "auto" }}>
-{JSON.stringify(heatmap, null, 2)}
-        </pre>
-      </section>
-
-      <section style={{ marginTop: 24 }}>
-        <h3>週間予測</h3>
-        <pre style={{ background: "#111", color: "#9ef", padding: 12, borderRadius: 8, overflow: "auto" }}>
-{JSON.stringify(weekly, null, 2)}
-        </pre>
-      </section>
+          <RouteCard route={route} />
+          <RecordInputCard />
+        </div>
+      )}
     </div>
   );
 }
