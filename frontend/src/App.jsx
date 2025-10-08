@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { api, setToken, getToken, clearToken } from "./api";
+import { api, getToken, clearToken } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 
@@ -18,7 +18,7 @@ function useDeviceId() {
 
 export default function App() {
   useDeviceId();
-  const [me, setMe] = useState(null);    // {id, username, email}
+  const [me, setMe] = useState(null); // {id, username, email}
   const [loading, setLoading] = useState(true);
   const [route, setRoute] = useState([]);
   const [msg, setMsg] = useState("");
@@ -34,7 +34,7 @@ export default function App() {
           await fetchAll();
         }
       } catch {
-        // トークンが無効なら消しておく（UIは未ログイン表示のまま）
+        // トークンが無効なら消しておく（AuthGate が未ログイン画面を出す）
         clearToken();
       } finally {
         setLoading(false);
@@ -46,49 +46,16 @@ export default function App() {
     setMsg("");
     try {
       const r = await api.dailyRoute();
-      setRoute(Array.isArray(r) ? r : (r?.route || []));
+      setRoute(Array.isArray(r) ? r : r?.route || []);
     } catch (e) {
       setMsg("データ取得に失敗しました。");
     }
   }
 
-  // ===== 認証（簡易UI） =====
-  const [auth, setAuth] = useState({ username: "", password: "", email: "" });
-  function setAuthField(k, v) { setAuth((s) => ({ ...s, [k]: v })); }
-
-  async function onRegister(e) {
-    e.preventDefault();
-    setMsg("");
-    try {
-      await api.register(auth.username, auth.password, auth.email || undefined);
-      const tk = await api.login(auth.username, auth.password);
-      setToken(tk?.access || tk?.token);
-      const m = await api.me();
-      setMe(m);
-      await fetchAll();
-    } catch (err) {
-      setMsg(err?.data?.detail || "登録/ログインに失敗しました。");
-    }
-  }
-
-  async function onLogin(e) {
-    e.preventDefault();
-    setMsg("");
-    try {
-      const tk = await api.login(auth.username, auth.password);
-      setToken(tk?.access || tk?.token);
-      const m = await api.me();
-      setMe(m);
-      await fetchAll();
-    } catch (err) {
-      setMsg(err?.data?.detail || "ログインに失敗しました。");
-    }
-  }
-
+  // ===== ログアウト（AuthGate の認証再評価を確実にするためリロード） =====
   function onLogout() {
     clearToken();
-    setMe(null);
-    setRoute([]);
+    window.location.reload();
   }
 
   if (loading) {
@@ -107,12 +74,16 @@ export default function App() {
           {me ? (
             <div className="flex items-center gap-3">
               <span>ようこそ、{me.username} さん</span>
-              <button onClick={fetchAll}
-                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
+              <button
+                onClick={fetchAll}
+                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700"
+              >
                 データを再取得
               </button>
-              <button onClick={onLogout}
-                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
+              <button
+                onClick={onLogout}
+                className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700"
+              >
                 ログアウト
               </button>
             </div>
@@ -120,63 +91,16 @@ export default function App() {
         </div>
       </header>
 
+      {/* AuthGate が未ログイン時は App を表示しないため、ここでは me が null の間のみ待機表示 */}
       {!me ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <form onSubmit={onLogin} className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
-            <div className="mb-3 text-lg font-semibold">ログイン</div>
-            <label className="block mb-3 text-sm">
-              <div className="mb-1">ユーザー名</div>
-              <input
-                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
-                value={auth.username}
-                onChange={(e) => setAuthField("username", e.target.value)}
-                required />
-            </label>
-            <label className="block mb-4 text-sm">
-              <div className="mb-1">パスワード</div>
-              <input
-                type="password"
-                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
-                value={auth.password}
-                onChange={(e) => setAuthField("password", e.target.value)}
-                required />
-            </label>
-            <button className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">ログイン</button>
-          </form>
-
-          <form onSubmit={onRegister} className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
-            <div className="mb-3 text-lg font-semibold">新規登録</div>
-            <label className="block mb-3 text-sm">
-              <div className="mb-1">ユーザー名</div>
-              <input
-                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
-                value={auth.username}
-                onChange={(e) => setAuthField("username", e.target.value)}
-                required />
-            </label>
-            <label className="block mb-3 text-sm">
-              <div className="mb-1">メール（任意）</div>
-              <input
-                type="email"
-                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
-                value={auth.email}
-                onChange={(e) => setAuthField("email", e.target.value)} />
-            </label>
-            <label className="block mb-4 text-sm">
-              <div className="mb-1">パスワード（8文字以上）</div>
-              <input
-                type="password"
-                className="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
-                value={auth.password}
-                onChange={(e) => setAuthField("password", e.target.value)}
-                required />
-            </label>
-            <button className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-500">登録してはじめる</button>
-          </form>
-        </div>
+        <div className="text-neutral-300">認証を確認中…</div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          {msg && <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200">{msg}</div>}
+          {msg && (
+            <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200">
+              {msg}
+            </div>
+          )}
 
           <RouteCard route={route} />
           <RecordInputCard />
