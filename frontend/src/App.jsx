@@ -3,6 +3,7 @@ import { api, getToken, clearToken } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 import SwipeDeck from "./components/SwipeDeck.jsx";
+import SummaryCard from "./components/SummaryCard.jsx"; // ← 追加
 
 // ===== ローカル保存のキー =====
 const GOAL_KEY = "dnf_goal_monthly";
@@ -165,12 +166,9 @@ export default function App() {
               <RecordInputCard />
             </section>
 
-            {/* --- 3枚目：履歴グラフ（プレースホルダー） --- */}
-            <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-              <div className="text-sm text-neutral-400 mb-2">Summary（グラフ）</div>
-              <div className="h-40 grid place-items-center text-neutral-400">
-                グラフカードは次の手順で追加（Recharts導入）
-              </div>
+            {/* --- 3枚目：履歴グラフ（Recharts） --- */}
+            <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-0">
+              <SummaryCard />
             </section>
           </SwipeDeck>
           <div className="text-center text-xs text-neutral-500 mt-2">
