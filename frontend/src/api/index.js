@@ -1,97 +1,71 @@
-// frontend/src/api/index.js
-// Vite の環境変数から API ベース URL を取得（末尾スラッシュや /api の有無を吸収）
-const raw = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-export const API_BASE = raw.endsWith("/api") ? raw : `${raw}/api`;
+// API 基底URL（末尾スラッシュなしで保持）
+const API_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
 
-// ---- Token utils (App.jsx が import する想定) ----
-const TOKEN_KEY = "dn.token";
-
+// トークン管理（ローカルストレージ）
 export function getToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) || "";
-  } catch {
-    return "";
-  }
+  return localStorage.getItem("token") || "";
 }
 export function setToken(token) {
-  try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-  } catch {}
-}
-export function clearToken() {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {}
+  if (token) localStorage.setItem("token", token);
+  else localStorage.removeItem("token");
 }
 
-// ---- 共通 fetch ----
 async function request(path, opts = {}) {
-  const headers = new Headers(opts.headers || {});
-  headers.set("Content-Type", "application/json");
-
-  const t = getToken();
-  if (t) headers.set("Authorization", `Bearer ${t}`);
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...opts,
     headers,
-    // JWT を使っているので cookie は不要
-    credentials: "omit",
+    // Cookie を使わないが将来拡張に備えて
+    credentials: "include"
   });
 
-  const isJson = res.headers.get("content-type")?.includes("application/json");
-  const body = isJson ? await res.json().catch(() => ({})) : await res.text();
-
-  // 未ログインは「エラーではあるが例外にしない」で返す（初期化を止めない）
-  if (res.status === 401) {
-    return { ok: false, status: 401, data: body };
-  }
-
+  // 200 以外は例外化（フロントで静かに扱う）
   if (!res.ok) {
-    const msg =
-      (body && body.detail) ||
-      (typeof body === "string" ? body : "Request failed");
-    const err = new Error(msg);
-    err.status = res.status;
-    err.data = body;
-    throw err;
+    const text = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
   }
-
-  return { ok: true, status: res.status, data: body };
+  // JSON でないレスポンスにも耐性
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
 }
 
-// ---- API surface ----
 export const api = {
-  health() {
-    return request("/healthz/");
+  register({ username, email, password }) {
+    return request("/api/auth/register/", {
+      method: "POST",
+      body: JSON.stringify({ username, email, password })
+    });
+  },
+  login({ username, password }) {
+    return request("/api/auth/login/", {
+      method: "POST",
+      body: JSON.stringify({ username, password })
+    }).then((d) => {
+      if (d?.access) setToken(d.access);
+      return d;
+    });
   },
   me() {
-    return request("/auth/me/");
-  },
-  register({ username, email, password }) {
-    return request("/auth/register/", {
-      method: "POST",
-      body: JSON.stringify({ username, email, password }),
-    });
-  },
-  async login({ username, password }) {
-    const r = await request("/auth/login/", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    });
-    if (r.ok && r.data?.access) setToken(r.data.access);
-    return r;
+    return request("/api/auth/me/");
   },
   dailyRoute() {
-    return request("/daily-route/");
+    return request("/api/daily-route/");
   },
   dailySummary(goal = 12000) {
-    return request(`/daily-summary/?goal=${encodeURIComponent(goal)}`);
+    return request(`/api/daily-summary/?goal=${goal}`);
   },
   heatmap() {
-    return request("/heatmap-data/");
+    return request("/api/heatmap-data/");
   },
-  weeklyForecast() {
-    return request("/weekly-forecast/");
-  },
+  weekly() {
+    return request("/api/weekly-forecast/");
+  }
 };
+
+export { API_BASE };
