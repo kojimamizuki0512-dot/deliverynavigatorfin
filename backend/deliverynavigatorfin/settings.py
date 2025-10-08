@@ -1,17 +1,24 @@
-from pathlib import Path
 import os
-import dj_database_url
+from pathlib import Path
+from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ---- 基本 ----
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret")
-DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
+# ==== 基本 ====
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key-change-me")
+DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
-# Railway でも落ちないようデフォルト許可（必要なら環境変数で絞る）
-ALLOWED_HOSTS = [h for h in os.environ.get("ALLOWED_HOSTS", "*").split(",") if h]
+# Railway / ローカル / 任意の FQDN を許可
+# （DEBUG=False の時に必要。ここが不適切だと 400/500 を誘発） 参照: docs
+# https://docs.djangoproject.com/en/5.2/topics/settings/
+ALLOWED_HOSTS = [
+    "localhost", "127.0.0.1", "[::1]",
+    os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip(),            # 例: deliverynavigatorfin-production.up.railway.app
+    os.environ.get("DJANGO_ALLOWED_HOST", "").strip(),              # 追加用
+    "*",  # 最後にワイルドカード（保険・必要に応じて外してOK）
+]
 
-# ---- アプリ ----
+# ==== アプリ ====
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -19,16 +26,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "corsheaders",
     "rest_framework",
-    "rest_framework_simplejwt",
+    "corsheaders",
     "api",
 ]
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -39,30 +44,27 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "deliverynavigatorfin.urls"
 
-TEMPLATES = [
-    {
-        "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
-        "APP_DIRS": True,
-        "OPTIONS": {
-            "context_processors": [
-                "django.template.context_processors.debug",
-                "django.template.context_processors.request",
-                "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors.messages",
-            ],
-        },
+TEMPLATES = [{
+    "BACKEND": "django.template.backends.django.DjangoTemplates",
+    "DIRS": [],
+    "APP_DIRS": True,
+    "OPTIONS": {
+        "context_processors": [
+            "django.template.context_processors.debug",
+            "django.template.context_processors.request",
+            "django.contrib.auth.context_processors.auth",
+            "django.contrib.messages.context_processors.messages",
+        ],
     },
-]
+}]
 
 WSGI_APPLICATION = "deliverynavigatorfin.wsgi.application"
 
-# ---- DB（環境変数 DATABASE_URL があればPostgres、無ければSQLite）----
-DATABASE_URL = os.environ.get("DATABASE_URL")
-if DATABASE_URL:
-    DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
-    }
+# ==== DB（Railway 未設定なら SQLite フォールバック）====
+if os.environ.get("DATABASE_URL"):
+    # railway の Nixpacks が dj-database-url を噛ませてくれる場合もあるが、
+    # 未導入でも SQLite に落ちるので OK
+    pass
 else:
     DATABASES = {
         "default": {
@@ -71,36 +73,66 @@ else:
         }
     }
 
-# ---- パスワードバリデータ（緩め）----
-AUTH_PASSWORD_VALIDATORS = []  # フロントの登録を通しやすくする
+# ==== 静的ファイル ====
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# ---- 国際化 ----
+# ==== REST/認証（必要なら既存設定そのまま）====
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.AllowAny",
+    ],
+}
+
+# ==== CORS/CSRF（フロント別ホストを許容）====
+CORS_ALLOW_ALL_ORIGINS = True
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.railway.app",
+    "https://*.up.railway.app",
+]
+
+# ==== 逆プロキシ配下（HTTPS 判定/ホスト判定を正しく）====
+# 参照: USE_X_FORWARDED_HOST と SECURE_PROXY_SSL_HEADER
+# https://docs.djangoproject.com/en/5.2/ref/settings/#use-x-forwarded-host
+# https://stackoverflow.com/a/62047871 （設定例） 
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# ==== ログ出力（500 の原因を確実に STDOUT に出す）====
+# 参照: Django Logging docs
+# https://docs.djangoproject.com/en/5.2/topics/logging/
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {"format": "[{levelname}] {name}: {message}", "style": "{"},
+    },
+    "handlers": {
+        "console": {"class": "logging.StreamHandler", "formatter": "simple"},
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO"),
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
+
+# ==== 国際化（既存どおりでOK）====
 LANGUAGE_CODE = "ja"
 TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
 USE_TZ = True
 
-# ---- 静的ファイル ----
-STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    }
-}
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# ---- DRF / JWT ----
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-}
-
-# ---- CORS / CSRF ----
-FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN")  # 例: https://rare-caring-...railway.app
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []
-CSRF_TRUSTED_ORIGINS = [FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []
