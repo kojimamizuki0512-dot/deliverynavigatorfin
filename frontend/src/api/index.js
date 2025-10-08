@@ -87,6 +87,7 @@ export const api = {
   // データ取得（ダミーAPI）
   dailyRoute: () => apiFetch("/api/daily-route/"),
   dailySummary: (goal = 12000) => apiFetch(`/api/daily-summary/?goal=${goal}`),
+  weeklyForecast: () => apiFetch("/api/weekly-forecast/"), // ★ グラフ用に追加
 
   // 実績保存（バックが未実装でも UI 側でローカル保存にフォールバック）
   createRecord: (payload) =>
