@@ -47,6 +47,13 @@ async function apiFetch(path, opts = {}) {
 }
 
 export const api = {
+  // ダミー：AI ルート（デモ用）。空配列を返しておけば画面は正常に動く
+  dailyRoute: async () => {
+    // 必要なら固定データにしてもOK:
+    // return [{ from: "A", to: "B", distance_km: 5, eta_min: 14 }];
+    return [];
+  },
+
   // ヘルス（使わなくてもOK）
   healthz: () => apiFetch("/api/healthz/"),
 
