@@ -1,164 +1,161 @@
 import React, { useEffect, useMemo, useState } from "react";
-import dayjs from "dayjs";
-import { api } from "../api";
+import { API_BASE, getToken } from "../api";
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
 } from "recharts";
 
-// 軽いフォーマッタ
-const yen = (n) =>
-  typeof n === "number"
-    ? `¥${n.toLocaleString()}`
-    : n == null
-    ? "-"
-    : String(n);
-
-function normalizeWeekly(raw) {
-  // 受け取りうる形をざっくり吸収して {date, earnings, orders}[]
-  if (Array.isArray(raw)) return raw;
-  if (Array.isArray(raw?.days)) return raw.days;
-  if (Array.isArray(raw?.week)) return raw.week;
-  if (Array.isArray(raw?.data)) return raw.data;
-  if (Array.isArray(raw?.items)) return raw.items;
-  return [];
-}
-
-function toChartRows(items) {
-  return items.map((it, idx) => {
-    const date =
-      it.date || it.day || it.label || dayjs().add(idx, "day").format("YYYY-MM-DD");
-    const earnings =
-      it.earnings ??
-      it.amount ??
-      it.revenue ??
-      it.y ??
-      0;
-    const orders = it.orders ?? it.count ?? it.n ?? 0;
-    return {
-      date,
-      label: dayjs(date).isValid() ? dayjs(date).format("MM/DD") : String(date),
-      earnings: Number(earnings) || 0,
-      orders: Number(orders) || 0,
-    };
-  });
-}
-
+/**
+ * SummaryCard
+ * - 今月合計（/api/monthly-total/）
+ * - 週間トレンド（/api/weekly-forecast/ が失敗したらデモデータ）
+ * - 取得失敗時は UI を壊さず静かなフォールバック
+ */
 export default function SummaryCard() {
-  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [monthlyTotal, setMonthlyTotal] = useState(0);
+  const [weekData, setWeekData] = useState([]);
   const [err, setErr] = useState("");
+
+  const demoWeek = useMemo(
+    () => [
+      { name: "Mon", value: 8200 },
+      { name: "Tue", value: 9100 },
+      { name: "Wed", value: 7600 },
+      { name: "Thu", value: 10400 },
+      { name: "Fri", value: 9800 },
+      { name: "Sat", value: 12300 },
+      { name: "Sun", value: 11200 },
+    ],
+    []
+  );
 
   useEffect(() => {
     (async () => {
       setErr("");
       setLoading(true);
+      const token = getToken();
+      const headers = {
+        Accept: "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      };
+
+      // 1) 今月合計
       try {
-        const r = await api.weeklyForecast();
-        const items = normalizeWeekly(r);
-        const chart = toChartRows(items);
-        setRows(chart);
-      } catch (e) {
-        setErr(e?.data?.detail || "データ取得に失敗しました");
-        setRows([]);
+        const r = await fetch(`${API_BASE}/api/monthly-total/`, { headers });
+        if (r.ok) {
+          const j = await r.json();
+          // 期待形: { total_sum: number }
+          const total =
+            typeof j?.total_sum === "number"
+              ? j.total_sum
+              : Number(j?.total || 0);
+          setMonthlyTotal(isFinite(total) ? total : 0);
+        } else {
+          setMonthlyTotal(0);
+        }
+      } catch {
+        setMonthlyTotal(0);
+      }
+
+      // 2) 週間トレンド
+      try {
+        const r = await fetch(`${API_BASE}/api/weekly-forecast/`, { headers });
+        if (r.ok) {
+          const j = await r.json();
+          // いくつかの可能性に耐えるパーサ
+          let arr = [];
+          if (Array.isArray(j)) arr = j;
+          else if (Array.isArray(j?.items)) arr = j.items;
+          else if (Array.isArray(j?.data)) arr = j.data;
+
+          const mapped = arr
+            .map((it) => {
+              const name =
+                it?.name ||
+                it?.day ||
+                it?.label ||
+                it?.date ||
+                it?.d ||
+                "—";
+              const v =
+                it?.value ??
+                it?.predicted ??
+                it?.y ??
+                it?.amount ??
+                it?.earnings ??
+                it?.v;
+              const value = Number(v);
+              return { name: String(name).slice(0, 6), value: isFinite(value) ? value : 0 };
+            })
+            .filter((x) => typeof x.value === "number");
+
+          setWeekData(mapped.length ? mapped : demoWeek);
+        } else {
+          setWeekData(demoWeek);
+        }
+      } catch {
+        setWeekData(demoWeek);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
-
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (acc, x) => {
-        acc.earnings += x.earnings;
-        acc.orders += x.orders;
-        return acc;
-      },
-      { earnings: 0, orders: 0 }
-    );
-  }, [rows]);
+  }, [API_BASE, demoWeek]);
 
   return (
-    <div className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-neutral-400">Summary（今週の予測・実績）</div>
-        <div className="text-xs text-neutral-400">
-          合計：{yen(totals.earnings)} / 注文 {totals.orders}件
+    <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold text-zinc-100">これまでのサマリー</h3>
+        {loading ? (
+          <span className="text-xs text-zinc-400">Loading…</span>
+        ) : err ? (
+          <span className="text-xs text-amber-400">{err}</span>
+        ) : null}
+      </div>
+
+      {/* 今月の累計 */}
+      <div className="mb-4">
+        <div className="text-sm text-zinc-400 mb-1">今月の累計</div>
+        <div className="text-2xl font-bold text-zinc-100">
+          ¥{monthlyTotal.toLocaleString()}
         </div>
       </div>
 
-      {loading ? (
-        <div className="h-48 grid place-items-center text-neutral-400">
-          読み込み中…
-        </div>
-      ) : err ? (
-        <div className="h-48 grid place-items-center text-rose-300">
-          {err}
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="h-48 grid place-items-center text-neutral-400">
-          データがありません
-        </div>
-      ) : (
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={rows} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
-              <XAxis
-                dataKey="label"
-                tick={{ fill: "rgba(255,255,255,.6)", fontSize: 12 }}
-                axisLine={{ stroke: "rgba(255,255,255,.2)" }}
-                tickLine={{ stroke: "rgba(255,255,255,.2)" }}
-              />
-              <YAxis
-                yAxisId="left"
-                tickFormatter={(v) => `¥${v / 1000}k`}
-                tick={{ fill: "rgba(255,255,255,.6)", fontSize: 12 }}
-                axisLine={{ stroke: "rgba(255,255,255,.2)" }}
-                tickLine={{ stroke: "rgba(255,255,255,.2)" }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: "rgba(255,255,255,.6)", fontSize: 12 }}
-                axisLine={{ stroke: "rgba(255,255,255,.2)" }}
-                tickLine={{ stroke: "rgba(255,255,255,.2)" }}
-              />
-              <Tooltip
-                formatter={(v, n) =>
-                  n === "earnings" ? [yen(v), "売上"] : [v, "件数"]
-                }
-                labelFormatter={(l) => `${l}`}
-                contentStyle={{ background: "rgba(0,0,0,.85)", border: "1px solid rgba(255,255,255,.1)" }}
-              />
-              <Area
-                yAxisId="left"
-                type="monotone"
-                dataKey="earnings"
-                name="売上"
-                fill="rgba(16,185,129,.35)"
-                stroke="rgba(16,185,129,1)"
-                strokeWidth={2}
-                activeDot={{ r: 4 }}
-              />
-              <Area
-                yAxisId="right"
-                type="monotone"
-                dataKey="orders"
-                name="件数"
-                fill="rgba(59,130,246,.25)"
-                stroke="rgba(59,130,246,1)"
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
+      {/* 週間トレンド（デモ／APIフォールバック） */}
+      <div className="h-48 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={weekData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+            <XAxis dataKey="name" stroke="#9ca3af" />
+            <YAxis stroke="#9ca3af" />
+            <Tooltip
+              contentStyle={{
+                background: "#0b0b0b",
+                border: "1px solid #27272a",
+                borderRadius: "0.75rem",
+              }}
+              labelStyle={{ color: "#e5e7eb" }}
+            />
+            <Line
+              type="monotone"
+              dataKey="value"
+              stroke="#22c55e"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <p className="mt-3 text-xs text-zinc-500">
+        ※ グラフはデモを含みます。データ保存が実装され次第、実データに置き換わります。
+      </p>
     </div>
   );
 }
