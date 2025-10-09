@@ -1,161 +1,114 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { API_BASE, getToken } from "../api";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts";
+// C:\Users\kojim\Documents\deliverynavigatorfin\frontend\src\components\SummaryCard.jsx
+import React, { useEffect, useState, useCallback } from "react";
+import { api } from "../api";
 
 /**
- * SummaryCard
- * - 今月合計（/api/monthly-total/）
- * - 週間トレンド（/api/weekly-forecast/ が失敗したらデモデータ）
- * - 取得失敗時は UI を壊さず静かなフォールバック
+ * これはダッシュボード上の「今月の累計」カード。
+ * 目的：
+ *  1) 画面表示時に /api/monthly-total/ を叩いて累計を表示する
+ *  2) 実績の保存が成功したら（RecordInputCard がイベントを投げる）
+ *     それを受け取って自動で再取得し、数字を更新する
+ *
+ * React Hooks ざっくり：
+ *  - useState: 値（total, loading, err）をコンポーネント内に持つ
+ *  - useCallback: 関数(refetch)をメモ化＝依存が変わらない限り同じ参照で保持
+ *  - useEffect: ライフサイクルのように副作用（初期取得、イベント購読/解除）を行う
  */
 export default function SummaryCard() {
+  // 今月の合計金額
+  const [total, setTotal] = useState(0);
+  // 通信中かどうか
   const [loading, setLoading] = useState(true);
-  const [monthlyTotal, setMonthlyTotal] = useState(0);
-  const [weekData, setWeekData] = useState([]);
+  // エラーメッセージ（あれば表示）
   const [err, setErr] = useState("");
 
-  const demoWeek = useMemo(
-    () => [
-      { name: "Mon", value: 8200 },
-      { name: "Tue", value: 9100 },
-      { name: "Wed", value: 7600 },
-      { name: "Thu", value: 10400 },
-      { name: "Fri", value: 9800 },
-      { name: "Sat", value: 12300 },
-      { name: "Sun", value: 11200 },
-    ],
-    []
-  );
+  /**
+   * API から今月の合計を取得する共通関数。
+   * - どこからでも呼べるように useCallback でメモ化している
+   * - レスポンスの形が将来変わっても壊れにくいように、柔軟にパースする
+   */
+  const refetch = useCallback(async () => {
+    setErr("");
+    setLoading(true);
+    try {
+      // 認証が必要なAPI。フロントの apiFetch が自動で Authorization を付与してくれる
+      const res = await api.monthlyTotal();
 
+      // ケース1: { total: 12345 } のようなオブジェクトで来る場合
+      if (res && typeof res.total === "number") {
+        setTotal(res.total);
+      }
+      // ケース2: [ { value: 1000 }, ... ] のような配列で来る場合
+      else if (Array.isArray(res)) {
+        const sum = res.reduce((acc, row) => acc + (Number(row?.value) || 0), 0);
+        setTotal(sum);
+      }
+      // それ以外は 0 とみなす（バックの将来変更に備えた安全策）
+      else {
+        setTotal(0);
+      }
+    } catch (e) {
+      // 401（未ログイン）のときはメッセージを優しめに
+      if (e?.status === 401) {
+        setErr("ログイン状態が切れています。再ログインしてください。");
+      } else {
+        setErr(e?.data?.detail || "取得に失敗しました。");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * 画面に初めて表示されたときに一回だけ取得。
+   * 依存配列に refetch を入れるのは、eslint 的に推奨の書き方。
+   */
   useEffect(() => {
-    (async () => {
-      setErr("");
-      setLoading(true);
-      const token = getToken();
-      const headers = {
-        Accept: "application/json",
-        Authorization: token ? `Bearer ${token}` : "",
-      };
+    refetch();
+  }, [refetch]);
 
-      // 1) 今月合計
-      try {
-        const r = await fetch(`${API_BASE}/api/monthly-total/`, { headers });
-        if (r.ok) {
-          const j = await r.json();
-          // 期待形: { total_sum: number }
-          const total =
-            typeof j?.total_sum === "number"
-              ? j.total_sum
-              : Number(j?.total || 0);
-          setMonthlyTotal(isFinite(total) ? total : 0);
-        } else {
-          setMonthlyTotal(0);
-        }
-      } catch {
-        setMonthlyTotal(0);
-      }
+  /**
+   * ★今回の肝：RecordInputCard 側で保存成功時に発火される
+   *   window.dispatchEvent(new CustomEvent("dnf:record:saved", { detail: {...} }))
+   *   を購読して、受け取ったら再取得する。
+   *
+   * イベント名は "dnf:record:saved"（固定）。
+   */
+  useEffect(() => {
+    const onSaved = () => {
+      // 保存直後に数字を最新化。連打されても問題なし。
+      refetch();
+    };
+    window.addEventListener("dnf:record:saved", onSaved);
+    // アンマウント時に購読解除（メモリリーク防止）
+    return () => window.removeEventListener("dnf:record:saved", onSaved);
+  }, [refetch]);
 
-      // 2) 週間トレンド
-      try {
-        const r = await fetch(`${API_BASE}/api/weekly-forecast/`, { headers });
-        if (r.ok) {
-          const j = await r.json();
-          // いくつかの可能性に耐えるパーサ
-          let arr = [];
-          if (Array.isArray(j)) arr = j;
-          else if (Array.isArray(j?.items)) arr = j.items;
-          else if (Array.isArray(j?.data)) arr = j.data;
-
-          const mapped = arr
-            .map((it) => {
-              const name =
-                it?.name ||
-                it?.day ||
-                it?.label ||
-                it?.date ||
-                it?.d ||
-                "—";
-              const v =
-                it?.value ??
-                it?.predicted ??
-                it?.y ??
-                it?.amount ??
-                it?.earnings ??
-                it?.v;
-              const value = Number(v);
-              return { name: String(name).slice(0, 6), value: isFinite(value) ? value : 0 };
-            })
-            .filter((x) => typeof x.value === "number");
-
-          setWeekData(mapped.length ? mapped : demoWeek);
-        } else {
-          setWeekData(demoWeek);
-        }
-      } catch {
-        setWeekData(demoWeek);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [API_BASE, demoWeek]);
+  // 金額の表示を「¥1,234」のように整える小ヘルパー
+  function formatJPY(v) {
+    try {
+      return `¥${Number(v || 0).toLocaleString("ja-JP")}`;
+    } catch {
+      return `¥${v}`;
+    }
+  }
 
   return (
-    <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold text-zinc-100">これまでのサマリー</h3>
-        {loading ? (
-          <span className="text-xs text-zinc-400">Loading…</span>
-        ) : err ? (
-          <span className="text-xs text-amber-400">{err}</span>
-        ) : null}
-      </div>
+    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-4">
+      <div className="mb-3 text-lg font-semibold">これまでのサマリー</div>
 
-      {/* 今月の累計 */}
-      <div className="mb-4">
-        <div className="text-sm text-zinc-400 mb-1">今月の累計</div>
-        <div className="text-2xl font-bold text-zinc-100">
-          ¥{monthlyTotal.toLocaleString()}
-        </div>
-      </div>
+      {loading ? (
+        <div className="text-neutral-400">読み込み中…</div>
+      ) : err ? (
+        <div className="text-amber-300">{err}</div>
+      ) : (
+        <>
+          <div className="mb-2 text-sm text-neutral-400">今月の累計</div>
+          <div className="text-3xl font-bold">{formatJPY(total)}</div>
 
-      {/* 週間トレンド（デモ／APIフォールバック） */}
-      <div className="h-48 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={weekData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-            <XAxis dataKey="name" stroke="#9ca3af" />
-            <YAxis stroke="#9ca3af" />
-            <Tooltip
-              contentStyle={{
-                background: "#0b0b0b",
-                border: "1px solid #27272a",
-                borderRadius: "0.75rem",
-              }}
-              labelStyle={{ color: "#e5e7eb" }}
-            />
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke="#22c55e"
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <p className="mt-3 text-xs text-zinc-500">
-        ※ グラフはデモを含みます。データ保存が実装され次第、実データに置き換わります。
-      </p>
+          {/* 週次グラフをこのカードに一緒に描く場合は、ここに Recharts 等で描画する */}
+        </>
+      )}
     </div>
   );
 }
