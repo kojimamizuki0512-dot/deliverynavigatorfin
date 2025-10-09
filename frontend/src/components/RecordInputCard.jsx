@@ -4,16 +4,15 @@ import { api } from "../api";
 
 /**
  * 実績入力カード
- * - まずは「売上（円）」だけをバックエンドに送ります（value にマップ）
- * - バックの /api/records/ は {title, value, created_at} を受け取れる想定
- *   - title: 文字列（ここでは備考的に作る）
- *   - value: 数値（今回の主役。売上をそのまま入れる）
- *   - created_at: ISO日時（選択した日を 12:00 固定で送る）
+ * - 「売上（円）」をバックエンドに保存します（value にマップ）
+ * - 保存成功時にブラウザ全体へ CustomEvent を通知します（他カードが再取得できるように）
  *
- * ★学習ポイント（入門の方へ）
- * - React の useState でフォームの状態を持つ
- * - クリック時に payload を作り、api.createRecord() で POST
- * - 成功/失敗でメッセージ表示、ボタンの二重押し対策に waiting フラグ
+ * ★学習ポイント（入門向け解説）
+ * - useState でフォームの状態を管理（React の基本）
+ * - onSubmit で payload を組み立てて、api.createRecord() で POST
+ * - 成功時に window.dispatchEvent(new CustomEvent(...)) で「出来事」を発火
+ *   → 他のコンポーネント（SummaryCard など）が addEventListener で受け取れる
+ * - まずは「イベントを飛ばす」だけを実装し、受信側は次の手順で追加します
  */
 export default function RecordInputCard() {
   // ---- フォーム状態 ----
@@ -26,9 +25,8 @@ export default function RecordInputCard() {
   const [msg, setMsg] = useState("");
   const [waiting, setWaiting] = useState(false);
 
-  // 「この月の合計など」を別カードで扱うため、ここは入力に専念
+  // 売上が未入力 or 数値でない場合は保存ボタンを無効化
   const isDisabled = useMemo(() => {
-    // 売上が未入力 or 数字でないときは保存させない
     if (sales === "") return true;
     const n = Number(sales);
     return Number.isNaN(n) || n < 0;
@@ -42,8 +40,10 @@ export default function RecordInputCard() {
     try {
       // ---- payload を組み立てる ----
       // created_at はユーザーが選んだ日付を 12:00 固定にして ISO 文字列に。
-      // （タイムゾーン差の影響で日付がズレにくい・集計しやすい為の小ワザ）
-      const createdAtIso = dayjs(date).hour(12).minute(0).second(0).millisecond(0).toISOString();
+      // （タイムゾーン差の影響で日付がズレにくい・集計しやすい）
+      const createdAtIso = dayjs(date)
+        .hour(12).minute(0).second(0).millisecond(0)
+        .toISOString();
 
       // タイトルは学習目的で、入力の概要を残す
       const title = `manual input: ${hours || 0}h / ${count || 0}件`;
@@ -54,11 +54,17 @@ export default function RecordInputCard() {
         created_at: createdAtIso,
       };
 
-      // ---- API を叩く（認証トークンは apiFetch 側で自動付与）----
-      await api.createRecord(payload);
+      // ---- API を叩く（トークンは apiFetch 側で付与）----
+      const created = await api.createRecord(payload);
 
-      // 成功したらフォームを軽くリセット
-      setMsg("保存しました。ダッシュボードの合計は次回取得時に反映されます。");
+      // ---- ここが今回の追加：保存成功イベントをブラウザ全体に飛ばす ----
+      // detail には作成されたレコードと入力値を渡す（受信側が自由に使える）
+      window.dispatchEvent(new CustomEvent("dnf:record:saved", {
+        detail: { record: created, payload }
+      }));
+
+      // 成功メッセージ＆軽いリセット
+      setMsg("保存しました。ダッシュボードは自動更新されます。");
       setSales("");
       // hours / count は今は保存対象外（将来のスキーマ拡張で送る想定）
     } catch (err) {
@@ -144,12 +150,13 @@ export default function RecordInputCard() {
         </div>
       )}
 
-      {/* --- 以下は学習向けメモ（実装のヒント）---
-         ・いずれ hours/count もサーバーに保存したくなったら、バック側のモデルを
-           DeliveryRecord(date, revenue, hours, count) などに拡張し、シリアライザ/ビュー/URL を追加。
-         ・フロントは payload をそれに合わせて { date, revenue, hours, count } に切り替える。
-         ・月間合計の /api/monthly-total/ も revenue を集計するように変更すると、グラフやCockpitがリアル連動可能。
-      ------------------------------------------------ */}
+      {/* --- 学習用メモ ---
+         ・イベント駆動の発想：
+           いきなり親子 props を通さずとも、まずは「出来事」を投げて他が拾う形にすると
+           既存コードへの影響が最小になる（1ファイル差分で段階的導入ができる）。
+         ・次の手順で SummaryCard / CockpitBar 側に addEventListener を書いて、
+           この "dnf:record:saved" を受けたら各APIを再取得する実装を足します。
+      -------------------------------- */}
     </div>
   );
 }
