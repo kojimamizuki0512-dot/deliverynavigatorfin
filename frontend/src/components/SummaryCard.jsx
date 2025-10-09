@@ -1,114 +1,137 @@
-// C:\Users\kojim\Documents\deliverynavigatorfin\frontend\src\components\SummaryCard.jsx
-import React, { useEffect, useState, useCallback } from "react";
+// frontend/src/components/SummaryCard.jsx
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { api } from "../api";
+import dayjs from "dayjs";
+
+// Recharts（折れ線グラフ）
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts";
 
 /**
- * これはダッシュボード上の「今月の累計」カード。
- * 目的：
- *  1) 画面表示時に /api/monthly-total/ を叩いて累計を表示する
- *  2) 実績の保存が成功したら（RecordInputCard がイベントを投げる）
- *     それを受け取って自動で再取得し、数字を更新する
- *
- * React Hooks ざっくり：
- *  - useState: 値（total, loading, err）をコンポーネント内に持つ
- *  - useCallback: 関数(refetch)をメモ化＝依存が変わらない限り同じ参照で保持
- *  - useEffect: ライフサイクルのように副作用（初期取得、イベント購読/解除）を行う
+ * SummaryCard
+ * - /api/records/ を取得して「日別の合計」を折れ線グラフ表示
+ * - 保存成功イベント `dnf:record:saved` を受けて自動で再取得
+ * - API 形式の揺れ（key名など）に強めの実装（sales_yen/amount/value のどれでもOK）
  */
 export default function SummaryCard() {
-  // 今月の合計金額
-  const [total, setTotal] = useState(0);
-  // 通信中かどうか
   const [loading, setLoading] = useState(true);
-  // エラーメッセージ（あれば表示）
   const [err, setErr] = useState("");
+  const [data, setData] = useState([]); // [{ date:'MM/DD', total: number }]
 
-  /**
-   * API から今月の合計を取得する共通関数。
-   * - どこからでも呼べるように useCallback でメモ化している
-   * - レスポンスの形が将来変わっても壊れにくいように、柔軟にパースする
-   */
-  const refetch = useCallback(async () => {
+  // --- 値の抽出（APIのフィールド名揺れに対応）---
+  const pickAmount = useCallback((rec) => {
+    // よくある候補: sales_yen / amount / value
+    const v = rec?.sales_yen ?? rec?.amount ?? rec?.value ?? 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }, []);
+
+  // --- 日付の抽出（created_at or date）を YYYY-MM-DD に正規化 ---
+  const pickDateKey = useCallback((rec) => {
+    const raw = rec?.date ?? rec?.created_at ?? rec?.createdAt ?? "";
+    const d = dayjs(raw);
+    if (d.isValid()) return d.format("YYYY-MM-DD");
+    // 文字列でなければ “今日” として扱う（フォールバック）
+    return dayjs().format("YYYY-MM-DD");
+  }, []);
+
+  // --- API取得＆集計（当月 or 直近30日を可視化）---
+  const refresh = useCallback(async () => {
     setErr("");
     setLoading(true);
     try {
-      // 認証が必要なAPI。フロントの apiFetch が自動で Authorization を付与してくれる
-      const res = await api.monthlyTotal();
+      const res = await api.records();
+      const list = Array.isArray(res)
+        ? res
+        : (res?.results ?? res?.items ?? res?.data ?? []);
 
-      // ケース1: { total: 12345 } のようなオブジェクトで来る場合
-      if (res && typeof res.total === "number") {
-        setTotal(res.total);
+      // 直近30日で日別合計を作る
+      const today = dayjs().startOf("day");
+      const from = today.subtract(29, "day"); // 30日分
+      const byDay = new Map(); // key: YYYY-MM-DD -> sum
+
+      // ゼロ埋め（データがない日も 0 表示にする）
+      for (let i = 0; i < 30; i++) {
+        const k = from.add(i, "day").format("YYYY-MM-DD");
+        byDay.set(k, 0);
       }
-      // ケース2: [ { value: 1000 }, ... ] のような配列で来る場合
-      else if (Array.isArray(res)) {
-        const sum = res.reduce((acc, row) => acc + (Number(row?.value) || 0), 0);
-        setTotal(sum);
+
+      for (const rec of list) {
+        const k = pickDateKey(rec);
+        const amount = pickAmount(rec);
+        if (byDay.has(k)) byDay.set(k, byDay.get(k) + amount);
       }
-      // それ以外は 0 とみなす（バックの将来変更に備えた安全策）
-      else {
-        setTotal(0);
-      }
+
+      const chart = Array.from(byDay.entries()).map(([k, total]) => ({
+        date: dayjs(k).format("MM/DD"),
+        total,
+      }));
+
+      setData(chart);
     } catch (e) {
-      // 401（未ログイン）のときはメッセージを優しめに
-      if (e?.status === 401) {
-        setErr("ログイン状態が切れています。再ログインしてください。");
-      } else {
-        setErr(e?.data?.detail || "取得に失敗しました。");
-      }
+      setErr("データ取得に失敗しました。");
+      // eslint-disable-next-line no-console
+      console.error(e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pickAmount, pickDateKey]);
 
-  /**
-   * 画面に初めて表示されたときに一回だけ取得。
-   * 依存配列に refetch を入れるのは、eslint 的に推奨の書き方。
-   */
+  // 初回取得
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    refresh();
+  }, [refresh]);
 
-  /**
-   * ★今回の肝：RecordInputCard 側で保存成功時に発火される
-   *   window.dispatchEvent(new CustomEvent("dnf:record:saved", { detail: {...} }))
-   *   を購読して、受け取ったら再取得する。
-   *
-   * イベント名は "dnf:record:saved"（固定）。
-   */
+  // 保存成功イベントで再取得（App に依存せず単体で更新できる）
   useEffect(() => {
-    const onSaved = () => {
-      // 保存直後に数字を最新化。連打されても問題なし。
-      refetch();
-    };
-    window.addEventListener("dnf:record:saved", onSaved);
-    // アンマウント時に購読解除（メモリリーク防止）
-    return () => window.removeEventListener("dnf:record:saved", onSaved);
-  }, [refetch]);
+    const handler = () => refresh();
+    window.addEventListener("dnf:record:saved", handler);
+    return () => window.removeEventListener("dnf:record:saved", handler);
+  }, [refresh]);
 
-  // 金額の表示を「¥1,234」のように整える小ヘルパー
-  function formatJPY(v) {
-    try {
-      return `¥${Number(v || 0).toLocaleString("ja-JP")}`;
-    } catch {
-      return `¥${v}`;
-    }
+  if (loading) {
+    return (
+      <div className="p-4">
+        <div className="text-neutral-400 text-sm">読み込み中…</div>
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="p-4">
+        <div className="text-amber-300 text-sm">{err}</div>
+      </div>
+    );
   }
 
   return (
-    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-4">
-      <div className="mb-3 text-lg font-semibold">これまでのサマリー</div>
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm text-neutral-400">これまでの実績（直近30日・日次合計）</div>
+        <div className="text-xs text-neutral-500">
+          保存すると自動で更新されます
+        </div>
+      </div>
 
-      {loading ? (
-        <div className="text-neutral-400">読み込み中…</div>
-      ) : err ? (
-        <div className="text-amber-300">{err}</div>
-      ) : (
-        <>
-          <div className="mb-2 text-sm text-neutral-400">今月の累計</div>
-          <div className="text-3xl font-bold">{formatJPY(total)}</div>
-
-          {/* 週次グラフをこのカードに一緒に描く場合は、ここに Recharts 等で描画する */}
-        </>
-      )}
+      <div className="h-[260px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis width={64} />
+            <Tooltip />
+            <Line type="monotone" dataKey="total" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
