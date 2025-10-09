@@ -1,9 +1,25 @@
-import React from "react";
+import React, { useMemo } from "react";
 
 /**
- * 匿名モード用：認証待ちを一切せず、即座にアプリを表示するゲート。
- * ここで外部API確認やトークン検証は行いません。
+ * ログイン廃止モード：
+ * 端末ごとの匿名IDを localStorage に用意するだけ。
+ * 画面は即座に素通し（待ち時間ゼロ）。
  */
+const DID_KEY = "dnf_device_id";
+
+function ensureDeviceId() {
+  let id = localStorage.getItem(DID_KEY);
+  if (!id) {
+    // 端末ごと一意（ユーザー操作なし）
+    id = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : String(Math.random()).slice(2) + Date.now();
+    localStorage.setItem(DID_KEY, id);
+  }
+  return id;
+}
+
 export default function AuthGate({ children }) {
-  return <>{children}</>;
+  useMemo(() => { ensureDeviceId(); }, []);
+  return children;
 }
