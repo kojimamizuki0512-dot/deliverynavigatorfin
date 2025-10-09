@@ -1,22 +1,22 @@
-// frontend/src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { api } from "./api";
+import { api, clearToken } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 import SwipeDeck from "./components/SwipeDeck.jsx";
-import SummaryCard from "./components/SummaryCard.jsx"; // 履歴一覧カード
+import HistoryList from "./components/HistoryList.jsx"; // 履歴（折れ線→リスト）
+import GlassCard from "./components/ui/GlassCard.jsx";
+import ProgressBar from "./components/ui/ProgressBar.jsx";
 
 // ===== ローカル保存のキー =====
 const GOAL_KEY = "dnf_goal_monthly";
-const DID_KEY = "dnf_device_id";
 
 function useDeviceId() {
-  // 端末ごと識別（サーバーへ X-Device-Id として付与される）
   return useMemo(() => {
-    let id = localStorage.getItem(DID_KEY);
+    const k = "dnf_device_id";
+    let id = localStorage.getItem(k);
     if (!id) {
       id = crypto.randomUUID?.() || String(Math.random()).slice(2);
-      localStorage.setItem(DID_KEY, id);
+      localStorage.setItem(k, id);
     }
     return id;
   }, []);
@@ -25,50 +25,64 @@ function useDeviceId() {
 export default function App() {
   const deviceId = useDeviceId();
 
-  // 画面用ステート
+  const [me, setMe] = useState(null); // {id, username, email}
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState("");
-  const [route, setRoute] = useState([]);
 
-  // ダッシュボード表示
+  // ルート＆ダッシュボード用
+  const [route, setRoute] = useState([]);
+  const [msg, setMsg] = useState("");
+
+  // 月間目標（ローカル保持）
   const [monthlyGoal, setMonthlyGoal] = useState(() => {
     const v = Number(localStorage.getItem(GOAL_KEY));
-    return Number.isFinite(v) && v > 0 ? v : 120000; // 初期 12万円
+    return Number.isFinite(v) && v > 0 ? v : 120000; // 初期値: 12万円
   });
+
+  // 今月達成額
   const [monthTotal, setMonthTotal] = useState(0);
 
-  // 履歴一覧（旧グラフの代わり）
-  const [records, setRecords] = useState([]);
-
-  // 初回ロード
+  // ===== 初期化 =====
   useEffect(() => {
     (async () => {
       try {
-        await fetchAll();
+        // 認証は“端末IDベースの匿名ゲスト”運用なので /me は直接OK
+        const m = await api.me();
+        setMe(m);
+        await fetchAll(); // ルート & 月次合計
+      } catch (e) {
+        // 特にやることなし。表示だけ整える
+        clearToken(); // 念のため
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  // まとめて取得
   async function fetchAll() {
     setMsg("");
     try {
-      // ルート（ダミー）
-      const r = await api.dailyRoute();
+      const [r, mt] = await Promise.all([api.dailyRoute(), api.monthlyTotal()]);
       setRoute(Array.isArray(r) ? r : r?.route || []);
-
-      // 実績一覧
-      const rec = await api.records();
-      setRecords(Array.isArray(rec) ? rec : []);
-
-      // 月間合計
-      const mt = await api.monthlyTotal();
       setMonthTotal(Number(mt?.total || 0));
     } catch (e) {
       setMsg("データ取得に失敗しました。");
     }
+  }
+
+  // 保存成功後に月次合計も反映できるようにフックを渡す
+  async function handleRecordSaved() {
+    try {
+      const mt = await api.monthlyTotal();
+      setMonthTotal(Number(mt?.total || 0));
+    } catch {
+      /* noop */
+    }
+  }
+
+  // ログアウト（キャッシュクリア）
+  function onLogout() {
+    clearToken();
+    window.location.reload();
   }
 
   // 目標金額の変更（ローカル保存）
@@ -81,14 +95,12 @@ export default function App() {
     setMonthlyGoal(n);
   }
 
-  const progressPct = Math.max(
-    0,
-    Math.min(100, Math.floor((monthTotal / monthlyGoal) * 100))
-  );
+  // 達成率（%）
+  const progressPct = Math.max(0, Math.min(100, Math.floor((monthTotal / monthlyGoal) * 100)));
 
   if (loading) {
     return (
-      <div className="min-h-screen grid place-items-center">
+      <div className="grid min-h-screen place-items-center">
         <div className="text-neutral-300">読み込み中…</div>
       </div>
     );
@@ -97,70 +109,77 @@ export default function App() {
   return (
     <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
       {/* ヘッダー */}
-      <header className="flex items-center justify-between mb-6">
+      <header className="mb-6 flex items-center justify-between">
         <div className="text-xl font-semibold">Delivery Navigator</div>
-        <div className="flex items-center gap-3 text-xs text-neutral-400">
-          <span>端末ID: {deviceId.slice(0, 4)}</span>
-          <button
-            onClick={fetchAll}
-            className="px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700"
-          >
-            データを再取得
-          </button>
+        <div className="text-xs text-neutral-500">端末ID: {String(deviceId).slice(0, 4)}</div>
+        <div className="text-sm">
+          {me ? (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={fetchAll}
+                className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1 hover:bg-neutral-700"
+              >
+                データを再取得
+              </button>
+              <button
+                onClick={onLogout}
+                className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1 hover:bg-neutral-700"
+              >
+                ログアウト
+              </button>
+            </div>
+          ) : null}
         </div>
       </header>
 
       {msg && (
-        <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200 mb-4">
+        <div className="mb-4 rounded-lg border border-amber-800 bg-amber-900/40 p-3 text-amber-200">
           {msg}
         </div>
       )}
 
-      {/* スワイプデッキ（3枚構成はそのまま） */}
+      {/* ===== スワイプデッキ（3枚） ===== */}
       <SwipeDeck className="relative" initialIndex={0}>
-        {/* 1枚目：Cockpit */}
-        <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-neutral-400">Cockpit Dashboard</div>
+        {/* --- 1枚目：Cockpit + AI Route（デモ） --- */}
+        <GlassCard
+          title="Cockpit Dashboard"
+          toolbar={
             <button
               onClick={changeGoal}
-              className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10"
+              className="rounded border border-white/10 bg-white/5 px-2 py-1 text-xs hover:bg-white/10"
             >
               目標を変更
             </button>
-          </div>
-          <div className="text-2xl font-semibold mb-1">
+          }
+          className="bg-white/[0.03]"
+        >
+          <div className="mb-1 text-2xl font-semibold">
             月間目標 ¥{monthlyGoal.toLocaleString()}
           </div>
-          <div className="text-sm text-neutral-400 mb-2">
+          <div className="mb-2 text-sm text-neutral-400">
             今月の達成額：¥{monthTotal.toLocaleString()}（{progressPct}%）
           </div>
-          <div className="h-2 w-full rounded bg-white/10 overflow-hidden mb-4">
-            <div
-              className="h-2 bg-emerald-500 transition-all"
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
+          <ProgressBar value={progressPct} className="mb-4" height="h-2" />
 
-          {/* AI Route Suggestion（デモ） */}
-          <div className="text-sm text-neutral-400 mb-2">AI Route Suggestion（デモ）</div>
+          <div className="mb-2 text-sm text-neutral-400">AI Route Suggestion（デモ）</div>
           <RouteCard route={route} />
-        </section>
+        </GlassCard>
 
-        {/* 2枚目：実績入力（保存成功 → 自動で fetchAll） */}
-        <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
-          <RecordInputCard onSaved={fetchAll} />
-        </section>
+        {/* --- 2枚目：実績入力（保存→合計自動反映） --- */}
+        <GlassCard title="実績を記録">
+          <RecordInputCard onSaved={handleRecordSaved} />
+          <p className="mt-2 text-right text-[11px] text-neutral-500">
+            保存すると自動でダッシュボードに反映されます
+          </p>
+        </GlassCard>
 
-        {/* 3枚目：履歴一覧（旧：グラフ） */}
-        <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-0">
-          <SummaryCard records={records} />
-        </section>
+        {/* --- 3枚目：履歴リスト --- */}
+        <GlassCard title="これまでの実績（直近30日・日次合計）" className="p-0">
+          <HistoryList />
+        </GlassCard>
       </SwipeDeck>
 
-      <div className="text-center text-xs text-neutral-500 mt-2">
-        ← スワイプ / ドラッグでカード切替 →
-      </div>
+      <div className="mt-2 text-center text-xs text-neutral-500">← スワイプ / ドラッグでカード切替 →</div>
     </div>
   );
 }
