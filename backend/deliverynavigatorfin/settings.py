@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+from corsheaders.defaults import default_headers  # ★ 追加：CORS 既定ヘッダー基準
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -9,13 +10,12 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key-change-me")
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
 # Railway / ローカル / 任意の FQDN を許可
-# （DEBUG=False の時に必要。ここが不適切だと 400/500 を誘発） 参照: docs
-# https://docs.djangoproject.com/en/5.2/topics/settings/
+# （DEBUG=False の時に必要。ここが不適切だと 400/500 を誘発）
 ALLOWED_HOSTS = [
     "localhost", "127.0.0.1", "[::1]",
-    os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip(),            # 例: deliverynavigatorfin-production.up.railway.app
-    os.environ.get("DJANGO_ALLOWED_HOST", "").strip(),              # 追加用
-    "*",  # 最後にワイルドカード（保険・必要に応じて外してOK）
+    os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip(),   # 例: deliverynavigatorfin-production.up.railway.app
+    os.environ.get("DJANGO_ALLOWED_HOST", "").strip(),     # 追加用
+    "*",                                                   # 必要なら外してOK
 ]
 
 # ==== アプリ ====
@@ -33,7 +33,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",               # ★ CORS はできるだけ先頭寄り
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -62,8 +62,7 @@ WSGI_APPLICATION = "deliverynavigatorfin.wsgi.application"
 
 # ==== DB（Railway 未設定なら SQLite フォールバック）====
 if os.environ.get("DATABASE_URL"):
-    # railway の Nixpacks が dj-database-url を噛ませてくれる場合もあるが、
-    # 未導入でも SQLite に落ちるので OK
+    # Nixpacks 側で解決されるケースもあるのでここではノー設定
     pass
 else:
     DATABASES = {
@@ -77,36 +76,37 @@ else:
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# ==== REST/認証（必要なら既存設定そのまま）====
+# ==== REST/認証 ====
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",  # 使う場合
+        "api.auth.DeviceIdAuthentication",                            # ★ 端末ID認証（X-Device-Id）
     ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.AllowAny",                        # ★ ログイン不要運用
     ],
 }
 
 # ==== CORS/CSRF（フロント別ホストを許容）====
+# Cookie 認証は使わないので Allow-Credentials は不要。
+# 独自ヘッダー X-Device-Id を明示的に許可しないとプリフライトで弾かれる。
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-device-id",                      # ★ これを必ず許可
+]
 CSRF_TRUSTED_ORIGINS = [
     "https://*.railway.app",
     "https://*.up.railway.app",
 ]
 
 # ==== 逆プロキシ配下（HTTPS 判定/ホスト判定を正しく）====
-# 参照: USE_X_FORWARDED_HOST と SECURE_PROXY_SSL_HEADER
-# https://docs.djangoproject.com/en/5.2/ref/settings/#use-x-forwarded-host
-# https://stackoverflow.com/a/62047871 （設定例） 
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
-# ==== ログ出力（500 の原因を確実に STDOUT に出す）====
-# 参照: Django Logging docs
-# https://docs.djangoproject.com/en/5.2/topics/logging/
+# ==== ログ出力 ====
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -129,7 +129,7 @@ LOGGING = {
     },
 }
 
-# ==== 国際化（既存どおりでOK）====
+# ==== 国際化 ====
 LANGUAGE_CODE = "ja"
 TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
