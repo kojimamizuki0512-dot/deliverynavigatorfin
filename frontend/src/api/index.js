@@ -1,89 +1,72 @@
-// ===== API ラッパ =====
+ // ===== API ラッパ =====
+ const ENV_BASE = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "");
+ const FALLBACK_BASE = "";
+ export const API_BASE = (ENV_BASE || FALLBACK_BASE) || "";
 
-// 環境変数（Railway の Frontend Variables に VITE_API_BASE を入れておく）
-// 例: https://deliverynavigatorfin-production.up.railway.app
-const ENV_BASE = import.meta.env.VITE_API_BASE?.replace(/\/+$/, "");
+-// Token 管理（今回は未使用化）
++// Token 管理（今回は未使用化）
+ const KEY = "dnf_token";
+ export function getToken() { return localStorage.getItem(KEY) || ""; }
+ export function setToken(t) { if (t) localStorage.setItem(KEY, t); }
+ export function clearToken() { localStorage.removeItem(KEY); }
 
-// どうしても未設定だった時の最後のフォールバック（同一オリジン想定）
-const FALLBACK_BASE = "";
++// ★ 端末ID（匿名ユーザー識別用）— 既存の App のフックに依存せずAPI層でも確実化
++const DID_KEY = "dnf_device_id";
++function getDeviceId() {
++  let id = localStorage.getItem(DID_KEY);
++  if (!id) {
++    id = (crypto.randomUUID?.() || String(Math.random()).slice(2));
++    localStorage.setItem(DID_KEY, id);
++  }
++  return id;
++}
++
+ // 共通 fetch
+ async function apiFetch(path, opts = {}) {
+   const url = path.startsWith("http")
+     ? path
+     : `${API_BASE}${path.startsWith("/") ? path : `/api/${path}`}`;
 
-// 最終決定
-export const API_BASE = (ENV_BASE || FALLBACK_BASE) || "";
+   const headers = new Headers(opts.headers || {});
+-  const token = getToken();
+-  if (token) headers.set("Authorization", `Bearer ${token}`);
++  // ★ 匿名運用：Authorizationは付けない
++  // ★ 代わりに X-Device-Id を常に送る
++  headers.set("X-Device-Id", getDeviceId());
+   if (!headers.has("Content-Type") && opts.body && !(opts.body instanceof FormData)) {
+     headers.set("Content-Type", "application/json");
+   }
 
-// Token の保管（localStorage に保存してページ遷移でも維持）
-const KEY = "dnf_token";
+-  const res = await fetch(url, { ...opts, headers, credentials: "include" });
++  // ★ クロスオリジンでもクッキー不要
++  const res = await fetch(url, { ...opts, headers });
+   if (!res.ok) {
+     const text = await res.text().catch(() => "");
+     const err = new Error(`HTTP ${res.status}`);
+     err.status = res.status;
+     try { err.data = JSON.parse(text); } catch { err.data = { detail: text || "error" }; }
+     throw err;
+   }
+   const ct = res.headers.get("content-type") || "";
+   return ct.includes("application/json") ? res.json() : res.text();
+ }
 
-export function getToken() {
-  return localStorage.getItem(KEY) || "";
-}
-export function setToken(t) {
-  if (t) localStorage.setItem(KEY, t);
-}
-export function clearToken() {
-  localStorage.removeItem(KEY);
-}
-
-// 共通 fetch（エラーは呼び出し側でハンドリング）
-// path は '/api/xxx' の “絶対” or 'xxx' の “相対”（相対は /api/xxx に直す）
-async function apiFetch(path, opts = {}) {
-  const url = path.startsWith("http")
-    ? path
-    : `${API_BASE}${path.startsWith("/") ? path : `/api/${path}`}`;
-
-  const headers = new Headers(opts.headers || {});
-  const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (!headers.has("Content-Type") && opts.body && !(opts.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-  headers.set("Accept", "application/json");
-
-  // ★ 重要：Cookie を送らない（CORS で * を許可していてもブロックされないように）
-  //   既定は "same-origin" なので、明示せず送らない運用にする。
-  const { credentials, ...rest } = opts;
-
-  const res = await fetch(url, { ...rest, headers });
-  if (!res.ok) {
-    // 401 は呼び出し側でログアウト誘導
-    const text = await res.text().catch(() => "");
-    const err = new Error(`HTTP ${res.status}`);
-    err.status = res.status;
-    try {
-      err.data = JSON.parse(text);
-    } catch {
-      err.data = { detail: text || "error" };
-    }
-    throw err;
-  }
-  const ct = res.headers.get("content-type") || "";
-  return ct.includes("application/json") ? res.json() : res.text();
-}
-
-export const api = {
-  // ヘルスチェック（UI では黙って使う。アラートは出さない）
-  healthz: () => apiFetch("/api/healthz/"),
-
-  // 認証
-  register: (username, password, email) =>
-    apiFetch("/api/auth/register/", {
-      method: "POST",
-      body: JSON.stringify({ username, password, email })
-    }),
-  login: (username, password) =>
-    apiFetch("/api/auth/login/", {
-      method: "POST",
-      body: JSON.stringify({ username, password })
-    }),
-  me: () => apiFetch("/api/auth/me/"),
-
-  // データ取得（ダミーAPI）
-  dailyRoute: () => apiFetch("/api/daily-route/"),
-  dailySummary: (goal = 12000) => apiFetch(`/api/daily-summary/?goal=${goal}`),
-
-  // 実績保存（バックが未実装でも UI 側でローカル保存にフォールバック）
-  createRecord: (payload) =>
-    apiFetch("/api/records/", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    })
-};
+ export const api = {
+-  // 認証（当面未使用）
+-  register: (username, password, email) =>
+-    apiFetch("/api/auth/register/", { method: "POST", body: JSON.stringify({ username, password, email }) }),
+-  login: (username, password) =>
+-    apiFetch("/api/auth/login/", { method: "POST", body: JSON.stringify({ username, password }) }),
+-  me: () => apiFetch("/api/auth/me/"),
++  // 認証系は当面使わない（残しても呼ばない）
+ 
+   // データ取得
+   dailyRoute:    () => apiFetch("/api/daily-route/"),
+   dailySummary:  (goal = 12000) => apiFetch(`/api/daily-summary/?goal=${goal}`),
+ 
+   // 実績
+   createRecord: (payload) =>
+     apiFetch("/api/records/", { method: "POST", body: JSON.stringify(payload) }),
++  listRecords: () => apiFetch("/api/records/"),
++  monthlyTotal: () => apiFetch("/api/monthly-total/"),
+ };
