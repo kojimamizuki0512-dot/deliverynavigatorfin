@@ -1,8 +1,7 @@
-// frontend/src/components/HistoryList.jsx
 import React, { useEffect, useState } from "react";
 import { api } from "../api";
 
-// 履歴一覧カード：バックエンド /api/records/ を読み込み、最新10件を表示
+// 履歴一覧カード：/api/records/ を読み込み、最新10件を表示
 export default function HistoryList() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,7 +16,6 @@ export default function HistoryList() {
     setErr("");
     try {
       const data = await api.records();
-      // すでに降順で返りますが念のため配列化だけ保証
       setRows(Array.isArray(data) ? data.slice(0, 10) : []);
     } catch (e) {
       setErr("取得に失敗しました。");
@@ -30,18 +28,20 @@ export default function HistoryList() {
     load();
   }, []);
 
-  // 保存後に自動更新できるよう、カスタムイベントにフック（発火されなくても問題なし）
+  // 保存イベントで即時反映（楽観的に先頭に追加、10件に丸め）
   useEffect(() => {
-    const h = () => load();
+    const h = (ev) => {
+      const rec = ev?.detail;
+      if (!rec) return;
+      setRows((prev) => [rec, ...prev].slice(0, 10));
+    };
     window.addEventListener("records:created", h);
     return () => window.removeEventListener("records:created", h);
   }, []);
 
   return (
     <div className="p-4">
-      <div className="text-sm text-neutral-400 mb-2">
-        これまでの実績（最新10件）
-      </div>
+      <div className="text-sm text-neutral-400 mb-2">これまでの実績（最新10件）</div>
 
       {loading ? (
         <div className="text-neutral-400">読み込み中…</div>
@@ -67,14 +67,10 @@ export default function HistoryList() {
             return (
               <li key={r.id} className="px-4 py-3 flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="text-neutral-200 truncate">
-                    {r.title || "record"}
-                  </div>
+                  <div className="text-neutral-200 truncate">{r.title || "record"}</div>
                   <div className="text-xs text-neutral-500">{when}</div>
                 </div>
-                <div className="ml-3 font-semibold text-emerald-400">
-                  {formatYen(r.value)}
-                </div>
+                <div className="ml-3 font-semibold text-emerald-400">{formatYen(r.value)}</div>
               </li>
             );
           })}

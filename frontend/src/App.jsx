@@ -3,7 +3,7 @@ import { api, clearToken } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 import SwipeDeck from "./components/SwipeDeck.jsx";
-import HistoryList from "./components/HistoryList.jsx"; // 履歴（折れ線→リスト）
+import HistoryList from "./components/HistoryList.jsx";
 import GlassCard from "./components/ui/GlassCard.jsx";
 import ProgressBar from "./components/ui/ProgressBar.jsx";
 
@@ -22,10 +22,27 @@ function useDeviceId() {
   }, []);
 }
 
+// 当月合計のフェールセーフ集計（/api/records/ のリストから同じ年月の合計を計算）
+function calcMonthTotalFrom(records) {
+  if (!Array.isArray(records)) return 0;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth(); // 0-11
+  let sum = 0;
+  for (const r of records) {
+    const d = r.created_at ? new Date(r.created_at) : null;
+    if (!d || !Number.isFinite(r.value)) continue;
+    if (d.getFullYear() === y && d.getMonth() === m) {
+      sum += Number(r.value) || 0;
+    }
+  }
+  return sum;
+}
+
 export default function App() {
   const deviceId = useDeviceId();
 
-  const [me, setMe] = useState(null); // {id, username, email}
+  const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // ルート＆ダッシュボード用
@@ -35,7 +52,7 @@ export default function App() {
   // 月間目標（ローカル保持）
   const [monthlyGoal, setMonthlyGoal] = useState(() => {
     const v = Number(localStorage.getItem(GOAL_KEY));
-    return Number.isFinite(v) && v > 0 ? v : 120000; // 初期値: 12万円
+    return Number.isFinite(v) && v > 0 ? v : 120000;
   });
 
   // 今月達成額
@@ -45,12 +62,10 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        // 認証は“端末IDベースの匿名ゲスト”運用なので /me は直接OK
         const m = await api.me();
         setMe(m);
-        await fetchAll(); // ルート & 月次合計
-      } catch (e) {
-        // 特にやることなし。表示だけ整える
+        await fetchAll(); // ルート & 月次合計（フェールセーフ付き）
+      } catch {
         clearToken(); // 念のため
       } finally {
         setLoading(false);
@@ -61,21 +76,40 @@ export default function App() {
   async function fetchAll() {
     setMsg("");
     try {
-      const [r, mt] = await Promise.all([api.dailyRoute(), api.monthlyTotal()]);
+      const [r, mt, recs] = await Promise.all([
+        api.dailyRoute(),
+        api.monthlyTotal().catch(() => ({ total: 0 })), // 失敗時 0
+        api.records().catch(() => []), // フェールセーフ用
+      ]);
+
       setRoute(Array.isArray(r) ? r : r?.route || []);
-      setMonthTotal(Number(mt?.total || 0));
+      let total = Number(mt?.total || 0);
+      // サーバ側が 0 を返しても、レコードがあるならクライアント集計で補う
+      if (total === 0 && Array.isArray(recs) && recs.length > 0) {
+        total = calcMonthTotalFrom(recs);
+      }
+      setMonthTotal(total);
     } catch (e) {
       setMsg("データ取得に失敗しました。");
     }
   }
 
-  // 保存成功後に月次合計も反映できるようにフックを渡す
-  async function handleRecordSaved() {
+  // 保存成功時：楽観的に合計を加算 → 正値でサーバ確認して補正
+  async function handleRecordSaved(rec) {
+    const add = Number(rec?.value || 0);
+    if (add) setMonthTotal((prev) => prev + add); // 即時反映
+
     try {
       const mt = await api.monthlyTotal();
-      setMonthTotal(Number(mt?.total || 0));
+      let total = Number(mt?.total || 0);
+      if (total === 0) {
+        // 念のためフェールセーフ
+        const recs = await api.records().catch(() => []);
+        total = calcMonthTotalFrom(recs);
+      }
+      setMonthTotal(total);
     } catch {
-      /* noop */
+      // 通信失敗時は楽観値のままにしておく
     }
   }
 
@@ -109,17 +143,17 @@ export default function App() {
   return (
     <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
       {/* ヘッダー */}
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 grid grid-cols-3 items-center">
         <div className="text-xl font-semibold">Delivery Navigator</div>
-        <div className="text-xs text-neutral-500">端末ID: {String(deviceId).slice(0, 4)}</div>
-        <div className="text-sm">
+        <div className="text-center text-xs text-neutral-500">端末ID: {String(deviceId).slice(0, 4)}</div>
+        <div className="text-right text-sm">
           {me ? (
-            <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-3">
               <button
                 onClick={fetchAll}
                 className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1 hover:bg-neutral-700"
               >
-                データを再取得
+                再取得
               </button>
               <button
                 onClick={onLogout}
@@ -165,21 +199,23 @@ export default function App() {
           <RouteCard route={route} />
         </GlassCard>
 
-        {/* --- 2枚目：実績入力（保存→合計自動反映） --- */}
+        {/* --- 2枚目：実績入力（保存→合計＆履歴に即時反映） --- */}
         <GlassCard title="実績を記録">
           <RecordInputCard onSaved={handleRecordSaved} />
           <p className="mt-2 text-right text-[11px] text-neutral-500">
-            保存すると自動でダッシュボードに反映されます
+            保存すると自動でダッシュボードと履歴に反映されます
           </p>
         </GlassCard>
 
         {/* --- 3枚目：履歴リスト --- */}
-        <GlassCard title="これまでの実績（直近30日・日次合計）" className="p-0">
+        <GlassCard title="これまでの実績（直近10件）" className="p-0">
           <HistoryList />
         </GlassCard>
       </SwipeDeck>
 
-      <div className="mt-2 text-center text-xs text-neutral-500">← スワイプ / ドラッグでカード切替 →</div>
+      <div className="mt-2 text-center text-xs text-neutral-500">
+        ← スワイプ / ドラッグでカード切替 →
+      </div>
     </div>
   );
 }
