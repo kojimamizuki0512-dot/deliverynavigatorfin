@@ -1,136 +1,107 @@
 // frontend/src/components/RecordInputCard.jsx
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { api } from "../api";
 
-/**
- * RecordInputCard
- * - 実績の入力フォーム。
- * - 「保存」成功時に 'dnf:record:saved' を dispatch してダッシュボード/グラフ側を自動更新。
- * - 今回の変更点：保存成功後に入力欄（売上・時間・件数）をクリア。
- *   （日付は連続入力しやすいよう **そのまま維持** します。必要なら today に戻す実装に変更可）
- */
-export default function RecordInputCard() {
-  // 今日の日付を 'YYYY/MM/DD' で作る（例: 2025/10/09）
-  const today = useMemo(() => {
+export default function RecordInputCard({ onSaved }) {
+  const [date, setDate] = useState(() => {
     const d = new Date();
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
-    return `${y}/${m}/${dd}`;
-  }, []);
-
-  // 入力値
-  const [date, setDate] = useState(today);
-  const [sales, setSales] = useState("");
+    return `${y}-${m}-${dd}`; // 例: 2025-10-09
+  });
+  const [amount, setAmount] = useState("");
   const [hours, setHours] = useState("");
   const [count, setCount] = useState("");
-
-  // UI 状態
-  const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  async function onSave(e) {
-    e.preventDefault();
-    if (saving) return;
+  function toInt(v) {
+    const n = Number(String(v).replace(/[^\d.-]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+    // ※ hours は小数OKなので後で parse
+  }
 
+  async function handleSave(e) {
+    e?.preventDefault?.();
     setMsg("");
     setSaving(true);
-
-    // --- バックエンドに送る形に整形 ----------------------------
-    // sales（円）は数字以外を除去 -> 数字が無ければ 0
-    const salesYen = Number(String(sales).replace(/[^\d]/g, "")) || 0;
-    // hours は小数OK、count は整数想定
-    const hoursNum = Number(hours) || 0;
-    const countNum = Number(count) || 0;
-
-    const payload = {
-      date,                // '2025/10/09' など。API側で受け入れ可能な形式に合わせる
-      sales_yen: salesYen, // 金額（円）
-      hours: hoursNum,     // 稼働時間（h）
-      count: countNum,     // 件数
-    };
-    // ----------------------------------------------------------
-
     try {
-      await api.createRecord(payload);
+      // バックエンドの期待キーで送る
+      const payload = {
+        date,                                   // YYYY-MM-DD
+        amount_yen: toInt(amount),              // Int
+        hours: Number(hours || 0),              // Float/Decimal OK
+        count: toInt(count),                    // Int
+      };
 
-      // 保存成功メッセージ
-      setMsg("保存しました。ダッシュボードが自動更新されます。");
+      const created = await api.createRecord(payload); // 201想定
 
-      // ダッシュボード側に更新イベント発火（App.jsx / SummaryCard.jsx が購読）
-      window.dispatchEvent(new CustomEvent("dnf:record:saved"));
-
-      // ★ 入力欄をクリア（date は維持。today に戻したい場合は setDate(today) に変更）
-      setSales("");
+      // 入力欄クリア
+      setAmount("");
       setHours("");
       setCount("");
-    } catch (err) {
-      const detail =
-        err?.data?.detail ||
-        (typeof err?.data === "string" ? err.data : "") ||
-        "保存に失敗しました。ネットワークまたはCORS設定をご確認ください。";
-      setMsg(detail);
+
+      setMsg("保存しました。ダッシュボード/グラフは自動更新されます。");
+
+      // ← これが重要：Appに通知して月次合計＆グラフを更新
+      onSaved?.(created);
+    } catch (e) {
+      setMsg("保存に失敗しました。ネットワークやCORS設定をご確認ください。");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form onSubmit={onSave} className="space-y-3">
-      <div>
-        <div className="text-sm text-neutral-400 mb-1">日付</div>
-        <input
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
-          placeholder="YYYY/MM/DD"
-        />
-      </div>
+    <form onSubmit={handleSave} className="space-y-3">
+      <div className="text-lg font-semibold mb-2">実績を記録</div>
 
-      <div>
-        <div className="text-sm text-neutral-400 mb-1">売上（円）</div>
-        <input
-          value={sales}
-          onChange={(e) => setSales(e.target.value)}
-          className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
-          placeholder="例: 12400"
-          inputMode="numeric"
-        />
-      </div>
+      <label className="block text-sm text-neutral-400">日付</label>
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
+      />
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <div className="text-sm text-neutral-400 mb-1">稼働時間（h）</div>
-          <input
-            value={hours}
-            onChange={(e) => setHours(e.target.value)}
-            className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
-            placeholder="例: 4.5"
-            inputMode="decimal"
-          />
-        </div>
-        <div>
-          <div className="text-sm text-neutral-400 mb-1">件数</div>
-          <input
-            value={count}
-            onChange={(e) => setCount(e.target.value)}
-            className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
-            placeholder="例: 8"
-            inputMode="numeric"
-          />
-        </div>
-      </div>
+      <label className="block text-sm text-neutral-400 mt-2">売上（円）</label>
+      <input
+        inputMode="numeric"
+        placeholder="例: 12400"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
+      />
+
+      <label className="block text-sm text-neutral-400 mt-2">稼働時間（h）</label>
+      <input
+        inputMode="decimal"
+        placeholder="例: 4.5"
+        value={hours}
+        onChange={(e) => setHours(e.target.value)}
+        className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
+      />
+
+      <label className="block text-sm text-neutral-400 mt-2">件数</label>
+      <input
+        inputMode="numeric"
+        placeholder="例: 8"
+        value={count}
+        onChange={(e) => setCount(e.target.value)}
+        className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2"
+      />
 
       <button
         type="submit"
         disabled={saving}
-        className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-60"
-        title={saving ? "送信中…" : "保存"}
-      >
+        className="mt-3 px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60">
         {saving ? "保存中…" : "保存"}
       </button>
 
-      {msg && <div className="mt-2 text-sm text-neutral-300">{msg}</div>}
+      {msg && (
+        <div className="text-sm text-neutral-300 mt-2">{msg}</div>
+      )}
     </form>
   );
 }
