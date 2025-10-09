@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api } from "../api";
 import GlassCard from "./ui/GlassCard.jsx";
 
@@ -11,7 +11,6 @@ function formatJPY(n) {
 }
 
 function formatDate(iso) {
-  // ISO or datetime string -> YYYY/MM/DD HH:mm
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
@@ -25,27 +24,46 @@ function formatDate(iso) {
 
 /**
  * これまでの実績（最新10件）をカードで一覧表示
- * 折れ線グラフの代替（軽量・壊れにくい）
+ * - 初回マウント時に取得
+ * - window の "dnf:record-saved" を受け取ったら即リロード
  */
 export default function HistoryList() {
   const [items, setItems] = useState([]);
   const [msg, setMsg] = useState("");
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.records(); // GET /api/records/
-        setItems(Array.isArray(data) ? data.slice(0, 10) : []);
-      } catch (e) {
-        setMsg("履歴の取得に失敗しました。");
-      }
-    })();
+  const reload = useCallback(async () => {
+    try {
+      setMsg("");
+      const data = await api.records(); // GET /api/records/
+      setItems(Array.isArray(data) ? data.slice(0, 10) : []);
+    } catch (e) {
+      setMsg("履歴の取得に失敗しました。");
+    }
   }, []);
+
+  // 初回ロード
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  // 保存イベントで自動更新
+  useEffect(() => {
+    const handler = () => reload();
+    window.addEventListener("dnf:record-saved", handler);
+    return () => window.removeEventListener("dnf:record-saved", handler);
+  }, [reload]);
 
   return (
     <GlassCard className="p-0 overflow-hidden">
       <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
         <div className="text-sm text-neutral-300">これまでの実績（最新10件）</div>
+        <button
+          onClick={reload}
+          className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10"
+          title="最新状態に更新"
+        >
+          更新
+        </button>
       </div>
 
       {msg && (
