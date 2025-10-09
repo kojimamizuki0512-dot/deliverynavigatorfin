@@ -9,12 +9,30 @@ const DID_KEY = "dnf_device_id";
 function getDeviceId() {
   let id = localStorage.getItem(DID_KEY);
   if (!id) {
-    id = (typeof crypto !== "undefined" && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : String(Math.random()).slice(2) + Date.now();
+    id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : String(Math.random()).slice(2) + Date.now();
     localStorage.setItem(DID_KEY, id);
   }
   return id;
+}
+
+// 旧トークン系との互換（現在は未使用だが、import されてもビルドが通るように残す）
+const TOKEN_ACCESS = "access_token";
+const TOKEN_REFRESH = "refresh_token";
+export function getToken() {
+  try {
+    return localStorage.getItem(TOKEN_ACCESS);
+  } catch {
+    return null;
+  }
+}
+export function clearToken() {
+  try {
+    localStorage.removeItem(TOKEN_ACCESS);
+    localStorage.removeItem(TOKEN_REFRESH);
+  } catch {}
 }
 
 // 共通 fetch
@@ -39,7 +57,11 @@ async function apiFetch(path, opts = {}) {
     const text = await res.text().catch(() => "");
     const err = new Error(`HTTP ${res.status}`);
     err.status = res.status;
-    try { err.data = JSON.parse(text); } catch { err.data = { detail: text || "error" }; }
+    try {
+      err.data = JSON.parse(text);
+    } catch {
+      err.data = { detail: text || "error" };
+    }
     throw err;
   }
   const ct = res.headers.get("content-type") || "";
@@ -47,10 +69,8 @@ async function apiFetch(path, opts = {}) {
 }
 
 export const api = {
-  // ダミー：AI ルート（デモ用）。空配列を返しておけば画面は正常に動く
+  // ダミー：AI ルート（デモ用）
   dailyRoute: async () => {
-    // 必要なら固定データにしてもOK:
-    // return [{ from: "A", to: "B", distance_km: 5, eta_min: 14 }];
     return [];
   },
 
