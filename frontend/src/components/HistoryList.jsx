@@ -1,81 +1,74 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api";
+import GlassCard from "./ui/GlassCard.jsx";
 
-// 履歴一覧カード：/api/records/ を読み込み、最新10件を表示
+function formatJPY(n) {
+  try {
+    return Number(n).toLocaleString("ja-JP");
+  } catch {
+    return String(n ?? 0);
+  }
+}
+
+function formatDate(iso) {
+  // ISO or datetime string -> YYYY/MM/DD HH:mm
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}/${m}/${day} ${hh}:${mm}`;
+}
+
+/**
+ * これまでの実績（最新10件）をカードで一覧表示
+ * 折れ線グラフの代替（軽量・壊れにくい）
+ */
 export default function HistoryList() {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-
-  function formatYen(n) {
-    const num = Number(n || 0);
-    return "¥" + num.toLocaleString("ja-JP");
-  }
-
-  async function load() {
-    setErr("");
-    try {
-      const data = await api.records();
-      setRows(Array.isArray(data) ? data.slice(0, 10) : []);
-    } catch (e) {
-      setErr("取得に失敗しました。");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [items, setItems] = useState([]);
+  const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    load();
-  }, []);
-
-  // 保存イベントで即時反映（楽観的に先頭に追加、10件に丸め）
-  useEffect(() => {
-    const h = (ev) => {
-      const rec = ev?.detail;
-      if (!rec) return;
-      setRows((prev) => [rec, ...prev].slice(0, 10));
-    };
-    window.addEventListener("records:created", h);
-    return () => window.removeEventListener("records:created", h);
+    (async () => {
+      try {
+        const data = await api.records(); // GET /api/records/
+        setItems(Array.isArray(data) ? data.slice(0, 10) : []);
+      } catch (e) {
+        setMsg("履歴の取得に失敗しました。");
+      }
+    })();
   }, []);
 
   return (
-    <div className="p-4">
-      <div className="text-sm text-neutral-400 mb-2">これまでの実績（最新10件）</div>
+    <GlassCard className="p-0 overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+        <div className="text-sm text-neutral-300">これまでの実績（最新10件）</div>
+      </div>
 
-      {loading ? (
-        <div className="text-neutral-400">読み込み中…</div>
-      ) : err ? (
-        <div className="p-3 rounded bg-amber-900/40 border border-amber-800 text-amber-100">
-          {err}
+      {msg && (
+        <div className="px-4 py-3 text-amber-200 bg-amber-900/30 border-b border-amber-800">
+          {msg}
         </div>
-      ) : rows.length === 0 ? (
-        <div className="text-neutral-400">まだ記録がありません。</div>
+      )}
+
+      {items.length === 0 ? (
+        <div className="px-4 py-10 text-neutral-400 text-sm">まだ記録がありません。</div>
       ) : (
-        <ul className="divide-y divide-white/5 rounded-xl overflow-hidden border border-white/10 bg-neutral-900/60">
-          {rows.map((r) => {
-            const d = r.created_at ? new Date(r.created_at) : null;
-            const when = d
-              ? d.toLocaleString("ja-JP", {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: false,
-                })
-              : "-";
-            return (
-              <li key={r.id} className="px-4 py-3 flex items-center justify-between">
-                <div className="min-w-0">
-                  <div className="text-neutral-200 truncate">{r.title || "record"}</div>
-                  <div className="text-xs text-neutral-500">{when}</div>
-                </div>
-                <div className="ml-3 font-semibold text-emerald-400">{formatYen(r.value)}</div>
-              </li>
-            );
-          })}
+        <ul className="divide-y divide-white/5">
+          {items.map((r) => (
+            <li key={r.id} className="px-4 py-3 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-neutral-200 text-sm truncate">{r.title || "record"}</div>
+                <div className="text-xs text-neutral-500">{formatDate(r.created_at)}</div>
+              </div>
+              <div className="text-emerald-400 font-medium shrink-0">¥{formatJPY(r.value)}</div>
+            </li>
+          ))}
         </ul>
       )}
-    </div>
+    </GlassCard>
   );
 }
