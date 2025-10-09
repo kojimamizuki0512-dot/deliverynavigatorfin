@@ -1,5 +1,6 @@
+// frontend/src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { api } from "./api";
+import { api } from "./api";                     // ← getToken/clearToken は使わない構成
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 import SwipeDeck from "./components/SwipeDeck.jsx";
@@ -7,57 +8,65 @@ import SummaryCard from "./components/SummaryCard.jsx";
 
 // ===== ローカル保存のキー =====
 const GOAL_KEY = "dnf_goal_monthly";
-const DID_KEY = "dnf_device_id";
 
 function useDeviceId() {
-  // 端末ごとの識別子（ログイン廃止のためUIにも表示）
+  // 端末ごとの識別子（バックエンドは X-Device-Id を見て紐付け）
   return useMemo(() => {
-    let id = localStorage.getItem(DID_KEY);
+    const k = "dnf_device_id";
+    let id = localStorage.getItem(k);
     if (!id) {
-      id = (typeof crypto !== "undefined" && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : String(Math.random()).slice(2) + Date.now();
-      localStorage.setItem(DID_KEY, id);
+      id = (crypto.randomUUID?.() || String(Math.random()).slice(2)) + Date.now();
+      localStorage.setItem(k, id);
     }
-    return id;
+    return id.slice(0, 4); // 表示用に短縮（例: 58ad）
   }, []);
 }
 
 export default function App() {
-  const deviceId = useDeviceId();
+  const deviceShort = useDeviceId();
 
-  // ルート＆ダッシュボード用
-  const [route, setRoute] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
 
-  // 月間目標（ローカル保持）
+  // ルート（デモ）
+  const [route, setRoute] = useState([]);
+
+  // 目標金額（ローカル保持）
   const [monthlyGoal, setMonthlyGoal] = useState(() => {
     const v = Number(localStorage.getItem(GOAL_KEY));
     return Number.isFinite(v) && v > 0 ? v : 120000; // 初期値: 12万円
   });
 
-  // 今月達成額（APIから反映）
+  // 今月達成額（APIから取得）
   const [monthTotal, setMonthTotal] = useState(0);
 
-  // 初期ロード
+  // ===== 初期データ取得 =====
   useEffect(() => {
-    fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    (async () => {
+      try {
+        await fetchAll();
+      } catch {
+        // 画面上でメッセージは出すので握りつぶし
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   async function fetchAll() {
     setMsg("");
     try {
       // ルート（デモ）
-      const r = await api.dailyRoute?.();
+      const r = await api.dailyRoute();
       setRoute(Array.isArray(r) ? r : (r?.route || []));
 
-      // 今月の累計
-      const mt = await api.monthlyTotal();
-      const value = Number(mt?.total ?? mt?.sum ?? mt ?? 0);
-      setMonthTotal(Number.isFinite(value) ? value : 0);
+      // ★ 今月合計（/api/monthly-total/）を反映
+      const mt = await api.monthlyTotal(); // 期待形: { total_yen: number }
+      const total = typeof mt === "number" ? mt : (mt?.total_yen ?? 0);
+      setMonthTotal(Number(total) || 0);
     } catch (e) {
       setMsg("データ取得に失敗しました。");
+      console.error(e);
     }
   }
 
@@ -74,19 +83,25 @@ export default function App() {
   // 達成率（%）
   const progressPct = Math.max(0, Math.min(100, Math.floor((monthTotal / monthlyGoal) * 100)));
 
+  if (loading) {
+    return (
+      <div className="min-h-screen grid place-items-center">
+        <div className="text-neutral-300">読み込み中…</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
       {/* ヘッダー */}
       <header className="flex items-center justify-between mb-6">
         <div className="text-xl font-semibold">Delivery Navigator</div>
-        <div className="text-xs text-neutral-400">
-          端末ID: {deviceId.slice(0, 4)}
-          <button
-            onClick={fetchAll}
-            className="ml-3 px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700 text-sm">
-            データを再取得
-          </button>
-        </div>
+        <div className="text-xs text-neutral-400">端末ID: {deviceShort}</div>
+        <button
+          onClick={fetchAll}
+          className="text-sm px-3 py-1 rounded bg-neutral-800 border border-neutral-700 hover:bg-neutral-700">
+          データを再取得
+        </button>
       </header>
 
       {msg && (
@@ -128,6 +143,9 @@ export default function App() {
 
         {/* --- 2枚目：実績入力 --- */}
         <section className="rounded-2xl bg-neutral-900/80 border border-neutral-800 p-4">
+          {/* 保存後は RecordInputCard 内で「保存しました」と出し、
+              画面上部の「データを再取得」ボタンで手動更新 or
+              自動更新させたい場合は props で fetchAll を渡して呼ぶ運用もOK */}
           <RecordInputCard />
         </section>
 
@@ -136,6 +154,7 @@ export default function App() {
           <SummaryCard />
         </section>
       </SwipeDeck>
+
       <div className="text-center text-xs text-neutral-500 mt-2">
         ← スワイプ / ドラッグでカード切替 →
       </div>
