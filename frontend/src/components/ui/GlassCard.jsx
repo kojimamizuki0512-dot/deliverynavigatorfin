@@ -22,18 +22,45 @@ export default function GlassCard({ className = "", children }) {
         <div className="-inset-10 absolute blur-[90px] bg-[radial-gradient(260px_240px_at_65%_45%,rgba(109,242,197,0.42),rgba(109,242,197,0.18)_40%,transparent_70%)]" />
       </div>
 
-      {/* ===== エメラルドの“発光点”を複数配置（濃いめ＆大きめ） ===== */}
+      {/* 大きめの面的ボケ光（既存：残す） */}
       <div className="pointer-events-none absolute inset-0 mix-blend-screen">
-        {/* 中心寄り・一番大きい点 */}
         <span className="absolute left-[72%] top-[52%] -translate-x-1/2 -translate-y-1/2 w-[260px] h-[260px] rounded-full bg-emerald-400/55 blur-[110px]" />
-        {/* 右寄り中サイズ */}
         <span className="absolute left-[86%] top-[68%] -translate-x-1/2 -translate-y-1/2 w-[160px] h-[160px] rounded-full bg-emerald-400/50 blur-[90px]" />
-        {/* 下め小サイズ */}
         <span className="absolute left-[62%] top-[78%] -translate-x-1/2 -translate-y-1/2 w-[120px] h-[120px] rounded-full bg-emerald-300/55 blur-[80px]" />
-        {/* 右上に小粒 */}
         <span className="absolute left-[82%] top-[36%] -translate-x-1/2 -translate-y-1/2 w-[90px] h-[90px] rounded-full bg-emerald-300/45 blur-[70px]" />
       </div>
-      {/* ======================================================== */}
+
+      {/* ===== 追加：小さくて明るい“点光” 3〜4個（芯 + ハロー） ===== */}
+      <div className="pointer-events-none absolute inset-0 mix-blend-screen">
+        {[
+          { x: "86%", y: "48%" },
+          { x: "88%", y: "63%" },
+          { x: "80%", y: "72%" },
+          { x: "74%", y: "58%" },
+        ].map((p, i) => (
+          <React.Fragment key={i}>
+            {/* 明るい芯（小さくキラッと） */}
+            <span
+              className="absolute w-[8px] h-[8px] rounded-full bg-emerald-100/95 shadow-[0_0_10px_3px_rgba(125,255,220,0.95)]"
+              style={{
+                left: p.x,
+                top: p.y,
+                transform: "translate(-50%,-50%)",
+              }}
+            />
+            {/* 外側のハロー（ふわっと） */}
+            <span
+              className="absolute w-[110px] h-[110px] rounded-full bg-emerald-400/45 blur-[60px]"
+              style={{
+                left: p.x,
+                top: p.y,
+                transform: "translate(-50%,-50%)",
+              }}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+      {/* ========================================================== */}
 
       {/* 実内容 */}
       <div className="relative z-10">{children}</div>
