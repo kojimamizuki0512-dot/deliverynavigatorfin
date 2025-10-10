@@ -1,187 +1,175 @@
-/* ===== Tailwind base ===== */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ===== Design Tokens (Dark Emerald / Glass) ===== */
+/* === App base ============================================================ */
 :root{
-  /* colors */
-  --bg-0: #070b0a;             /* 背景の最暗部 */
-  --bg-1: #0c1413;             /* 背景の中間 */
-  --bg-2: #0f1917;             /* 背景のやや明るい層 */
-  --line-soft: rgba(255,255,255,.06);   /* 薄い外枠 */
-  --line-inner: rgba(255,255,255,.04);  /* 内側のハイライト */
-  --shadow-strong: rgba(0,0,0,.45);
-  --shadow-soft: rgba(0,0,0,.25);
-  --text-strong: rgba(255,255,255,.92);
-  --text-dim: rgba(255,255,255,.72);
-  --text-faint: rgba(255,255,255,.56);
-
-  /* emerald accent */
-  --emerald-1: #1bd7a0;        /* 明るいエメラルド */
-  --emerald-2: #15c28f;        /* 中間 */
-  --emerald-3: #0fae82;        /* 濃い */
-
-  /* radii / spacing */
-  --radius-lg: 24px;
-  --radius-xl: 28px;
-  --pad-card: 22px;
-  --gap-row: 14px;
-
-  /* typography scale */
-  --fz-title: 22px;      /* カード見出し */
-  --fz-sub: 17px;        /* 本文 */
-  --fz-time: 16px;       /* 時刻 */
-  --fz-amount: 46px;     /* 大きな金額 */
-
-  --track: rgba(255,255,255,.08); /* progress 背景 */
+  --bg-deep:#071312;                  /* 深いボトルグリーン */
+  --fg:#E9FEF6;                       /* 視認性の高い前景 */
+  --muted:#c6e7dd99;
+  --line:255,255,255;                 /* 透過線用（rgbaに展開） */
+  --emerald:#10b981;
+  --emerald-soft:16,185,129;
 }
 
-/* ===== App background (深いグリーングラデ + ほのかなバンド) ===== */
-html,body,#root{
-  height:100%;
-}
+html,body,#root{height:100%}
+*{box-sizing:border-box}
 body{
-  color: var(--text-strong);
+  margin:0;
+  color:var(--fg);
   background:
-    radial-gradient(1200px 800px at 70% 20%, rgba(23,78,64,.35), transparent 55%),
-    radial-gradient(900px 700px at 20% 80%, rgba(16,122,96,.28), transparent 50%),
-    linear-gradient(180deg, var(--bg-1), var(--bg-0) 60%, #000 100%);
+    radial-gradient(1200px 800px at 70% 0%, rgba(var(--emerald-soft),0.06) 0, transparent 60%),
+    radial-gradient(900px 700px at 10% 20%, rgba(var(--emerald-soft),0.05) 0, transparent 65%),
+    linear-gradient(180deg,#0a1716 0%, #050b0a 100%);
+  background-color:var(--bg-deep);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
 }
 
-/* ===== Glass Card (1枚板の薄いガラス) ===== */
-.glass-card{
-  position: relative;
-  border-radius: var(--radius-lg);
-  padding: var(--pad-card);
-  background: rgba(255,255,255,.035);
-  border: 1px solid var(--line-soft);
-  backdrop-filter: saturate(130%) blur(16px);
-  -webkit-backdrop-filter: saturate(130%) blur(16px);
+/* ページの左右パディング（狭いモバイル幅想定） */
+.app-pad{padding:22px 18px 24px}
+
+/* === 汎用ガラスカード =================================================== */
+.glass{
+  position:relative;
+  border-radius:28px;
+  border:1px solid rgba(var(--line),0.06);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   box-shadow:
-    0 24px 48px var(--shadow-strong),
-    inset 0 1px var(--line-inner);
-  overflow: hidden; /* bokehレイヤーを内包 */
+    0 20px 40px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  overflow:hidden;
 }
 
-/* bokeh グロー（控えめなエメラルドの光） */
-.glass-card::before{
+/* ガラス内側の淡いグロー（リファレンスの“にじみ”） */
+.glass::before,
+.glass::after{
   content:"";
-  position:absolute; inset:-20%;
-  background:
-    radial-gradient(320px 280px at 70% 45%, rgba(39, 244, 178,.20), transparent 60%),
-    radial-gradient(220px 220px at 85% 70%, rgba(58, 255, 206,.16), transparent 55%),
-    radial-gradient(180px 180px at 15% 30%, rgba(23, 210, 160,.08), transparent 60%);
+  position:absolute; inset:auto;
   pointer-events:none;
-  filter: blur(4px);
+}
+.glass::before{
+  left:-120px; top:40%;
+  width:380px; height:380px; transform:translateY(-50%);
+  background: radial-gradient(50% 50% at 50% 50%, rgba(var(--emerald-soft),.10) 0%, rgba(16,185,129,0) 60%);
+  filter: blur(24px);
+}
+.glass::after{
+  right:-80px; top:8%;
+  width:220px; height:220px;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(var(--emerald-soft),.10) 0%, rgba(16,185,129,0) 65%);
+  filter: blur(18px);
 }
 
-/* 見出し/本文の既定 */
-.glass-title{
-  font-size: var(--fz-title);
-  font-weight: 700;
-  letter-spacing: .2px;
+/* ネストしたガラスの“二重枠”を抑制（今回の一番の違いの原因） */
+.glass .glass{
+  border-color:transparent !important;
+  box-shadow:none !important;
+  background:transparent !important;
 }
-.text-dim{ color: var(--text-dim); }
-.text-faint{ color: var(--text-faint); }
 
-/* ===== Timeline Row（薄い面 + 1px 境界） ===== */
-.row-thin{
-  display:flex; align-items:center; gap:14px;
-  border-radius: 16px;
-  padding: 14px 16px;
-  background: rgba(255,255,255,.04);
-  border: 1px solid var(--line-soft);
-  box-shadow: inset 0 1px var(--line-inner), 0 8px 16px var(--shadow-soft);
+/* セクション見出し（AI Route Suggestion など） */
+.section-title{
+  margin:0; padding:18px 20px 6px 20px;
+  font-weight:700; letter-spacing:.2px;
+  color:#e9fef6; font-size:22px;
 }
-.row-time{
-  min-width:56px;
-  font-size: var(--fz-time);
-  font-weight: 600;
-  color: var(--text-dim);
-  text-align:right;
+
+/* === プログレス（薄いバー／パーセントは別要素で） ======================= */
+.pill-progress{
+  position:relative; width:100%; height:14px;
+  border-radius:999px;
+  background:rgba(255,255,255,.06);
+  overflow:hidden;
 }
-.icon-badge{
-  width:32px; height:32px; flex:0 0 32px;
+.pill-progress > span{
+  position:absolute; inset:0 auto 0 0;
+  width:var(--value,0%); transition:width .35s ease;
+  background:
+    linear-gradient(90deg, rgba(var(--emerald-soft),.65), rgba(var(--emerald-soft),.35));
+  border-radius:999px;
+  box-shadow:0 0 12px rgba(var(--emerald-soft),.35);
+}
+
+/* === AI ルート提案カード ================================================== */
+.ai-card{ padding:10px 12px 16px 12px }
+
+/* タイムラインの1行 */
+.ai-row{
+  display:grid;
+  grid-template-columns: 64px 48px 1fr;
+  align-items:center;
+  gap:14px;
+  padding:14px 16px;
+  margin:10px 12px;
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+  border:1px solid rgba(var(--line),.05);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+/* 時刻 */
+.ai-time{
+  font-size:18px; letter-spacing:.3px; color:#d9f8ef;
+  opacity:.92; text-align:left;
+}
+
+/* アイコンの“半透明チップ” */
+.ai-chip{
+  width:40px; height:40px; border-radius:12px;
   display:grid; place-items:center;
-  border-radius: 9999px;
-  background: rgba(20,30,28,.5);
+  background:
+    radial-gradient(100% 100% at 30% 20%, rgba(var(--emerald-soft),.20) 0%, rgba(var(--emerald-soft),.06) 45%, rgba(16,185,129,0) 70%),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  border:1px solid rgba(var(--line),.06);
   box-shadow:
-    inset 0 0 16px rgba(31, 238, 178,.18),
-    0 0 0 1px rgba(255,255,255,.04);
-  color: var(--emerald-1);
-}
-.row-text{
-  font-size: var(--fz-sub);
-  line-height: 1.45;
-  color: var(--text-strong);
+    0 10px 20px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(255,255,255,.06);
+  color:#a9f5e3;
+  font-size:18px;
 }
 
-/* ===== Emerald Pill Progress ===== */
-.progress-pill{
-  position: relative;
-  height: 12px;
-  border-radius:9999px;
-  background: var(--track);
-  overflow: hidden;
-  box-shadow: inset 0 1px var(--line-inner);
-}
-.progress-pill__fill{
-  height:100%;
-  background: linear-gradient(90deg, var(--emerald-3), var(--emerald-1) 55%, var(--emerald-2));
-  border-radius: inherit;
-  box-shadow:
-    0 0 24px rgba(39, 244, 178,.35),
-    0 8px 12px rgba(0,0,0,.25) inset;
-  transition: width .4s cubic-bezier(.22,.69,.11,1);
+/* 行テキスト */
+.ai-text{
+  font-size:18px; line-height:1.35; letter-spacing:.2px;
+  color:#e9fef6;
 }
 
-/* 右端の “8%” などの小ラベル */
-.progress-pill__label{
-  color: var(--text-dim);
-  font-weight:600;
+/* 予測収益のブロック */
+.ai-earn{
+  margin:14px 12px 4px; padding:18px 16px;
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border:1px solid rgba(var(--line),.05);
+}
+.ai-earn-label{
+  color:var(--muted); font-size:16px; margin-bottom:6px;
+}
+.ai-earn-value{
+  font-weight:800; letter-spacing:.5px;
+  font-size:44px;
+  color:rgba(var(--emerald-soft),.95);
+  text-shadow:0 0 24px rgba(var(--emerald-soft),.25);
 }
 
-/* ===== Big Amount ===== */
-.amount-emerald{
-  font-size: var(--fz-amount);
-  font-weight: 800;
-  color: #76ffd8;           /* 目に優しいペールエメラルド */
-  text-shadow: 0 2px 12px rgba(43, 255, 200,.18);
-  font-variant-numeric: tabular-nums;
+/* タブバー（既存の見た目を維持） */
+.tabbar{
+  position:fixed; left:0; right:0; bottom:0;
+  padding:10px 12px 14px;
+  background:linear-gradient(180deg, rgba(0,0,0,.0), rgba(0,0,0,.35) 30%, rgba(0,0,0,.55) 100%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top:1px solid rgba(255,255,255,.06);
 }
-
-/* ===== Frosted Tabbar（1枚板の足元バー） ===== */
-.frosted-tabbar{
-  position: sticky; bottom: 0; left: 0; right: 0;
-  display:flex; gap: 6px; justify-content: space-around;
-  padding: 12px 14px calc(env(safe-area-inset-bottom,0) + 10px);
-  background: rgba(6,10,10,.5);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%);
-  border-top: 1px solid rgba(255,255,255,.06);
-  box-shadow: 0 -18px 40px rgba(0,0,0,.45), inset 0 1px rgba(255,255,255,.04);
-  z-index: 30;
+.tabbtn{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  width:31%; max-width:210px; height:64px; margin:0 6px;
+  border-radius:18px; border:1px solid rgba(255,255,255,.06);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  color:#dff7f1; text-decoration:none; font-weight:600;
 }
-.frosted-tabbar .tab{
-  display:flex; flex-direction:column; align-items:center; gap:6px;
-  min-width: 72px;
-  padding: 8px 10px;
-  border-radius: 12px;
-  color: var(--text-faint);
+.tabbtn.is-active{
+  outline:2px solid rgba(var(--emerald-soft),.25);
+  background:
+    radial-gradient(120% 120% at 50% 10%, rgba(var(--emerald-soft),.18) 0%, rgba(16,185,129,0) 70%),
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
 }
-.frosted-tabbar .tab.is-active{
-  color: #9efadd;
-  text-shadow: 0 0 16px rgba(43,255,200,.25);
-}
-.frosted-tabbar .tab.is-active::after{
-  content:"";
-  margin-top:6px;
-  width: 26px; height: 2px; border-radius: 9999px;
-  background: linear-gradient(90deg, var(--emerald-3), var(--emerald-1));
-  box-shadow: 0 0 14px rgba(39,244,178,.35);
-}
-
-/* ===== Helpers ===== */
-.round-xl{ border-radius: var(--radius-xl); }
-.gap-row{ display:flex; flex-direction:column; gap: var(--gap-row); }
