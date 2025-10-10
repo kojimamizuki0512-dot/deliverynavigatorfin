@@ -1,69 +1,82 @@
+/* frontend/src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Theme Vars (dark emerald) ===== */
+/* ====== カラーとグローの共通変数 ====== */
 :root{
-  --bg-0:#0a0d10;
-  --bg-1:#0b0f13;
-  --bg-2:#0e1318;
-  --panel-start:rgba(19,25,28,.92);
-  --panel-end:rgba(19,25,28,.78);
-  --border-a:rgba(255,255,255,.16);
-  --border-b:rgba(255,255,255,.04);
-  --accent:#34d399; /* emerald-400 */
+  --bg-0: #0b0e11;
+  --card: rgba(18,20,23,0.85);
+  --stroke: rgba(255,255,255,0.06);
+  --glow: 0 0 32px rgba(16,185,129,0.25);
+  --txt: rgba(255,255,255,0.92);
+  --txt-dim: rgba(255,255,255,0.55);
+  --accent: #22c55e; /* emerald-500 */
 }
 
-/* ===== App background (vignette + emerald glow) ===== */
-html,body,#root{ height:100%; }
-body{
-  background:
-    radial-gradient(1200px 600px at 80% -10%, rgba(52,211,153,.08), transparent 60%),
-    radial-gradient(900px 500px at -10% 80%, rgba(52,211,153,.06), transparent 65%),
-    linear-gradient(180deg, var(--bg-1), var(--bg-0));
-  color: rgb(229 231 235);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ===== Subtle noise overlay (no extra file, inline SVG) ===== */
-body::before{
-  content:"";
-  position:fixed; inset:0; pointer-events:none;
-  opacity:.06; mix-blend-mode:overlay;
-  background-image:url("data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'>\
-<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/></filter>\
-<rect width='100%' height='100%' filter='url(%23n)' opacity='0.5'/></svg>");
-}
-
-/* ===== Title (上部の“Delivery Navigator”) ===== */
-.app-title{
-  letter-spacing:.3px;
-  font-weight:600;
-}
-
-/* ===== Cockpit progress (この後の手順で使う) ===== */
-.cockpit-progress{
-  --h:10px;
-  height:var(--h);
-  border-radius:9999px;
-  position:relative;
-  overflow:hidden;
-  border:1px solid rgba(255,255,255,.06);
-  background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-}
-.cockpit-progress > .fill{
+/* ====== 背景（ダーク＋グリーンの放射グラデ） ====== */
+html,body,#root{
   height:100%;
-  background:linear-gradient(90deg, rgba(52,211,153,.15), rgba(52,211,153,.55));
-  border-right:1px solid rgba(255,255,255,.15);
-  box-shadow:inset 0 0 8px rgba(52,211,153,.35), 0 0 14px rgba(52,211,153,.25);
 }
-.cockpit-progress::after{
-  content:"";
-  position:absolute; inset:0; pointer-events:none;
-  background:repeating-linear-gradient(90deg, transparent, transparent 14px, rgba(255,255,255,.04) 14px, rgba(255,255,255,.04) 15px);
+body{
+  color: var(--txt);
+  background:
+    radial-gradient(1200px 800px at 70% 0%, rgba(16,185,129,0.12), transparent 60%),
+    radial-gradient(1000px 600px at 20% 20%, rgba(16,185,129,0.07), transparent 55%),
+    linear-gradient(180deg, #090b0f 0%, #0c1116 100%);
+  background-attachment: fixed;
 }
 
-/* 共通カード余白をそろえる（既存レイアウトは保持） */
-.card-pad{ padding:18px 16px; }
+/* うっすらノイズ */
+body::after{
+  content:"";
+  position:fixed; inset:0;
+  pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg width='160' height='160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+/* ====== グラスカードの共通 ====== */
+.glass {
+  background: var(--card);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.45), var(--glow);
+}
+
+/* 薄い分割線 */
+.hr {
+  height:1px; width:100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+}
+
+/* 小見出し */
+.kicker{ color: var(--txt-dim); font-size: .85rem; }
+
+/* “AIグリーン”の微光背景（カード内） */
+.bg-grid-green{
+  position: relative;
+  overflow: hidden;
+}
+.bg-grid-green::before{
+  content:"";
+  position:absolute; inset:-20%;
+  background:
+    radial-gradient(400px 300px at 85% 30%, rgba(16,185,129,0.18), transparent 60%),
+    radial-gradient(220px 220px at 30% 60%, rgba(16,185,129,0.12), transparent 55%),
+    radial-gradient(120px 120px at 75% 70%, rgba(16,185,129,0.15), transparent 60%);
+  filter: blur(8px);
+}
+
+/* 角丸プログレスの細いレール */
+.progress-rail{
+  height:10px; border-radius: 9999px;
+  background: rgba(255,255,255,0.08);
+}
+.progress-bar{
+  height:10px; border-radius: 9999px;
+  background: var(--accent);
+  box-shadow: 0 0 16px rgba(34,197,94,.35), inset 0 0 6px rgba(255,255,255,.08);
+  transition: width .35s ease;
+}

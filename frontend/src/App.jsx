@@ -1,31 +1,31 @@
+// frontend/src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 import SwipeDeck from "./components/SwipeDeck.jsx";
+import SummaryCard from "./components/SummaryCard.jsx";
 
 import GlassCard from "./components/ui/GlassCard.jsx";
 import ProgressBar from "./components/ui/ProgressBar.jsx";
-import HistoryList from "./components/HistoryList.jsx";
 
-// ローカル保存キー
 const GOAL_KEY = "dnf_goal_monthly";
-const DID_KEY = "dnf_device_id";
 
-function getDeviceId() {
-  let id = localStorage.getItem(DID_KEY);
-  if (!id) {
-    id = (crypto?.randomUUID?.() || String(Math.random()).slice(2)) + Date.now();
-    localStorage.setItem(DID_KEY, id);
-  }
-  return id;
+function useDeviceId() {
+  return useMemo(() => {
+    const k = "dnf_device_id";
+    let id = localStorage.getItem(k);
+    if (!id) {
+      id = (crypto?.randomUUID?.() || String(Math.random()).slice(2));
+      localStorage.setItem(k, id);
+    }
+    return id;
+  }, []);
 }
 
 export default function App() {
-  // 端末ID（表示用）
-  const deviceId = useMemo(getDeviceId, []);
+  useDeviceId();
 
-  // ルート & ダッシュボード
   const [route, setRoute] = useState([]);
   const [msg, setMsg] = useState("");
 
@@ -33,42 +33,36 @@ export default function App() {
     const v = Number(localStorage.getItem(GOAL_KEY));
     return Number.isFinite(v) && v > 0 ? v : 120000;
   });
-
   const [monthTotal, setMonthTotal] = useState(0);
 
+  // 初期ロード
   useEffect(() => {
-    (async () => {
-      try {
-        await fetchAll();
-      } catch (e) {
-        // 画面上部にだけ通知
-        setMsg("初期データ取得に失敗しました。");
-      }
-    })();
+    fetchAll();
   }, []);
 
   async function fetchAll() {
-    setMsg("");
-    const [r, agg] = await Promise.allSettled([api.dailyRoute(), api.monthlyTotal()]);
-    if (r.status === "fulfilled") {
-      const v = Array.isArray(r.value) ? r.value : (r.value?.route || []);
-      setRoute(v);
-    }
-    if (agg.status === "fulfilled") {
-      setMonthTotal(Number(agg.value?.total || 0));
+    try {
+      setMsg("");
+      const [r, m] = await Promise.all([
+        api.dailyRoute(),
+        api.monthlyTotal(),
+      ]);
+      setRoute(Array.isArray(r) ? r : (r?.route || []));
+      setMonthTotal(Number(m?.total || 0));
+    } catch (e) {
+      setMsg("データ取得に失敗しました。");
     }
   }
 
-  // 実績保存後、合計と履歴を更新するために公開コールバックを子に渡す
-  async function handleSaved() {
+  // 実績新規作成 → 即座に合計と履歴も再取得
+  async function onCreatedRecord() {
     try {
-      const x = await api.monthlyTotal();
-      setMonthTotal(Number(x?.total || 0));
-      // 履歴側は各自マウント時に読み直す作りなので、ここでは何もしない
-      // 必要ならカスタムイベントなどで通知してもOK
-    } catch {
-      // 無視（トースト不要）
-    }
+      const m = await api.monthlyTotal();
+      setMonthTotal(Number(m?.total || 0));
+      // SummaryCard 側は内部 fetch を expose していなければ
+      // 全体再取得で OK（負荷小）
+      fetchRecordsForSummary?.();
+    } catch {}
   }
 
   function changeGoal() {
@@ -80,60 +74,73 @@ export default function App() {
     setMonthlyGoal(n);
   }
 
-  const progressPct = Math.max(0, Math.min(100, Math.floor((monthTotal / monthlyGoal) * 100)));
+  const pct = Math.max(0, Math.min(100, Math.floor((monthTotal / monthlyGoal) * 100)));
+
+  // SummaryCard へ再読込を依頼するための ref（既存の SummaryCard が未対応なら無視されます）
+  let fetchRecordsForSummary = null;
+  const bindSummaryReload = (fn) => { fetchRecordsForSummary = fn; };
 
   return (
     <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
-      {/* ヘッダー */}
-      <header className="flex items-center justify-between mb-6">
-        <div className="text-xl font-semibold">Delivery Navigator</div>
-        <div className="text-xs text-neutral-500">端末ID: {deviceId.slice(0, 4)}</div>
+      {/* ==== ヘッダー ==== */}
+      <header className="mb-6 text-center">
+        <div className="text-2xl md:text-3xl font-semibold tracking-wide">Delivery Navigator</div>
       </header>
 
       {msg && (
-        <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200 mb-4">
+        <div className="glass p-3 mb-4 text-amber-200" style={{ background: "rgba(120, 53, 15, .45)" }}>
           {msg}
         </div>
       )}
 
-      {/* スワイプデッキ（3枚） */}
+      {/* ==== スワイプデッキ ==== */}
       <SwipeDeck className="relative" initialIndex={0}>
-        {/* 1枚目：Cockpit（ガラスUI）＋AI Routeデモ */}
-        <GlassCard className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-neutral-400">Cockpit Dashboard</div>
-            <button
-              onClick={changeGoal}
-              className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10"
-            >
-              目標を変更
-            </button>
-          </div>
 
-          <div className="text-2xl font-semibold mb-1">
-            月間目標 ¥{monthlyGoal.toLocaleString()}
-          </div>
-          <div className="text-sm text-neutral-400 mb-2">
-            今月の達成額：¥{monthTotal.toLocaleString()}（{progressPct}%）
-          </div>
-          <ProgressBar value={progressPct} className="mb-4" />
+        {/* --- 1枚目：Cockpit（上段） --- */}
+        <section className="space-y-4">
+          {/* Cockpit Dashboard */}
+          <GlassCard className="bg-grid-green">
+            <div className="kicker mb-1">Cockpit Dashboard</div>
+            <div className="mb-3">
+              <ProgressBar percent={pct} />
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <div className="text-base md:text-lg font-semibold">
+                ¥{monthTotal.toLocaleString()} <span className="text-[12px] md:text-sm text-white/60">/ ¥{monthlyGoal.toLocaleString()}</span>
+              </div>
+              <button onClick={changeGoal}
+                      className="text-xs px-2 py-1 rounded bg-white/5 border border-white/10 hover:bg-white/10">
+                目標を変更
+              </button>
+            </div>
+          </GlassCard>
 
-          <div className="text-sm text-neutral-400 mb-2">AI Route Suggestion（デモ）</div>
-          <RouteCard route={route} />
-        </GlassCard>
+          {/* AI Route Suggestion（写真の“緑ぽわ”カード） */}
+          <GlassCard className="bg-grid-green">
+            <div className="text-[1.05rem] md:text-lg font-semibold mb-3">AI Route Suggestion</div>
+            {/* 既存のダミールートをここに入れる */}
+            <RouteCard route={route} />
+          </GlassCard>
+        </section>
 
-        {/* 2枚目：実績入力（保存後にCockpit合計を即反映） */}
-        <GlassCard className="p-4">
-          <RecordInputCard onSaved={handleSaved} />
-        </GlassCard>
+        {/* --- 2枚目：実績入力 --- */}
+        <section>
+          <GlassCard className="bg-grid-green">
+            <div className="text-[1.05rem] md:text-lg font-semibold mb-3">実績を記録</div>
+            {/* RecordInputCard は保存時に onSaved を呼ぶようになっている想定 */}
+            <RecordInputCard onSaved={onCreatedRecord} />
+          </GlassCard>
+        </section>
 
-        {/* 3枚目：これまでの実績（折れ線の代替） */}
-        <HistoryList />
+        {/* --- 3枚目：履歴（折れ線は撤去済→リスト/要約） --- */}
+        <section>
+          <GlassCard className="bg-grid-green p-0">
+            <SummaryCard onBindReload={bindSummaryReload} />
+          </GlassCard>
+        </section>
       </SwipeDeck>
 
-      <div className="text-center text-xs text-neutral-500 mt-2">
-        ← スワイプ / ドラッグでカード切替 →
-      </div>
+      <div className="text-center text-xs text-white/50 mt-2">← スワイプ / ドラッグでカード切替 →</div>
     </div>
   );
 }
