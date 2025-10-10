@@ -2,95 +2,101 @@ import React, { useState } from "react";
 import { api } from "../api";
 
 /**
- * 実績入力カード
- * - タイトルと金額を入力 → 保存
- * - 保存成功時:
- *   1) window に "dnf:record-saved" を発火（HistoryList が受けて即リロード）
- *   2) 親から渡された onSaved() があれば呼び出し（Cockpit 合計の即更新）
- *   3) 入力欄クリア
+ * 入力欄がスワイプデッキにタッチを奪われないよう
+ * onPointerDown/onTouchStart でイベント伝播を止める。
+ * 保存中以外は disabled にしない。
  */
 export default function RecordInputCard({ onSaved }) {
   const [title, setTitle] = useState("");
-  const [amount, setAmount] = useState(""); // 文字列で保持（入力しやすさ優先）
+  const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // "12,345円" みたいな文字列から数値へ安全に変換
-  function toIntSafe(v) {
-    if (v == null) return 0;
-    const n = Number(String(v).replace(/[^\d\-+.]/g, ""));
-    return Number.isFinite(n) ? Math.trunc(n) : 0;
-  }
+  const stopSwipe = (e) => {
+    e.stopPropagation();
+  };
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setMsg("");
+    if (saving) return;
+
     setSaving(true);
+    setMsg("");
     try {
       const payload = {
-        title: title || "record",
-        // バックエンドは value/sales/amount/revenue のいずれでも受けるが、基本は value を送る
-        value: toIntSafe(amount),
+        title: title.trim() || "record",
+        // 数値っぽい文字だけ拾う
+        value: Number(String(value).replace(/[^\d\-.]/g, "")) || 0,
       };
-      const created = await api.createRecord(payload); // POST /api/records/
-
-      // ---- 履歴へ即時反映：保存イベントを通知（HistoryList がリロード）----
-      window.dispatchEvent(new CustomEvent("dnf:record-saved", { detail: created }));
-
-      // ---- Cockpit 合計を即時反映：親ハンドラを呼ぶ（App.jsx で月間合計を再取得）----
-      if (typeof onSaved === "function") {
-        try {
-          await onSaved(created);
-        } catch {
-          // 親での再取得失敗はここでは握りつぶす（UIに影響させない）
-        }
-      }
+      await api.createRecord(payload);
 
       // 入力欄クリア
       setTitle("");
-      setAmount("");
+      setValue("");
 
-      setMsg("保存しました。");
-      setTimeout(() => setMsg(""), 1500);
+      // 画面側の集計更新（両方を即時反映）
+      try {
+        // App 側の再取得（存在すれば）
+        if (typeof onSaved === "function") onSaved();
+      } catch {}
+
+      // 保険: カスタムイベントで他コンポーネントへ通知
+      try {
+        window.dispatchEvent(new CustomEvent("dnf:record-saved"));
+      } catch {}
+
+      setMsg("保存しました。ダッシュボードは自動更新されます。");
     } catch (err) {
-      setMsg(err?.data?.detail || "保存に失敗しました。");
+      setMsg("保存に失敗しました。ネットワークやCORS設定をご確認ください。");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <label className="block text-sm">
-        <div className="mb-1 text-neutral-300">タイトル</div>
-        <input
-          className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 outline-none focus:ring-1 focus:ring-emerald-500/60"
-          placeholder="例）昼ピーク"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-      </label>
+    <div
+      className="glass-card p-4"
+      onPointerDown={stopSwipe}
+      onTouchStart={stopSwipe}
+    >
+      <h3 className="text-xl font-semibold mb-3">実績を記録</h3>
 
-      <label className="block text-sm">
-        <div className="mb-1 text-neutral-300">金額（円）</div>
-        <input
-          className="w-full px-3 py-2 rounded bg-white/5 border border-white/10 outline-none focus:ring-1 focus:ring-emerald-500/60"
-          placeholder="例）12400"
-          inputMode="numeric"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-      </label>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <label className="block text-sm text-neutral-300 mb-1">タイトル</label>
+          <input
+            type="text"
+            placeholder="例）昼ピーク"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            disabled={saving}
+            className="w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring focus:ring-emerald-500/30"
+          />
+        </div>
 
-      <button
-        disabled={saving}
-        className="w-full py-2 rounded-xl bg-emerald-500/80 hover:bg-emerald-500 transition disabled:opacity-60"
-        type="submit"
-      >
-        {saving ? "保存中…" : "保存する"}
-      </button>
+        <div>
+          <label className="block text-sm text-neutral-300 mb-1">金額（円）</label>
+          <input
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="例）12400"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={saving}
+            className="w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 outline-none focus:ring focus:ring-emerald-500/30"
+          />
+        </div>
 
-      {msg && <p className="text-sm text-emerald-300">{msg}</p>}
-    </form>
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full rounded-lg py-3 font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+        >
+          {saving ? "保存中…" : "保存する"}
+        </button>
+
+        {msg && <p className="text-xs text-neutral-300">{msg}</p>}
+      </form>
+    </div>
   );
 }
