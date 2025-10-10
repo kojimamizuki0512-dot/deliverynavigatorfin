@@ -1,82 +1,154 @@
-/* frontend/src/index.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* ====== カラーとグローの共通変数 ====== */
+/* ===== Design tokens ===== */
 :root{
-  --bg-0: #0b0e11;
-  --card: rgba(18,20,23,0.85);
-  --stroke: rgba(255,255,255,0.06);
-  --glow: 0 0 32px rgba(16,185,129,0.25);
-  --txt: rgba(255,255,255,0.92);
-  --txt-dim: rgba(255,255,255,0.55);
-  --accent: #22c55e; /* emerald-500 */
+  --bg-deep1:#061714;
+  --bg-deep2:#071311;
+  --bg-deep3:#050b0a;
+
+  --card-bg:rgba(14,24,22,.55);
+  --card-bg-strong:rgba(16,30,27,.65);
+  --card-border:rgba(151,255,221,.10);
+  --card-inner-shadow:rgba(0,0,0,.35);
+
+  --txt-primary:#e7f5ef;
+  --txt-muted:rgba(231,245,239,.65);
+
+  --emerald-1:#43e3b0;
+  --emerald-2:#1cae86;
+  --emerald-soft:rgba(67,227,176,.18);
 }
 
-/* ====== 背景（ダーク＋グリーンの放射グラデ） ====== */
+/* ===== App background (暗めのグラデ＋軽いノイズ) ===== */
 html,body,#root{
   height:100%;
 }
 body{
-  color: var(--txt);
+  color:var(--txt-primary);
   background:
-    radial-gradient(1200px 800px at 70% 0%, rgba(16,185,129,0.12), transparent 60%),
-    radial-gradient(1000px 600px at 20% 20%, rgba(16,185,129,0.07), transparent 55%),
-    linear-gradient(180deg, #090b0f 0%, #0c1116 100%);
+    radial-gradient(1200px 800px at 70% -10%, rgba(25,68,58,.25), transparent 60%),
+    radial-gradient(900px 600px at -10% 100%, rgba(19,52,45,.28), transparent 55%),
+    linear-gradient(180deg, var(--bg-deep1), var(--bg-deep2) 40%, var(--bg-deep3));
   background-attachment: fixed;
 }
 
-/* うっすらノイズ */
-body::after{
-  content:"";
-  position:fixed; inset:0;
-  pointer-events:none;
-  background-image:url("data:image/svg+xml,%3Csvg width='160' height='160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.65' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
-  mix-blend-mode: soft-light;
-}
-
-/* ====== グラスカードの共通 ====== */
-.glass {
-  background: var(--card);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--stroke);
-  border-radius: 18px;
-  box-shadow: 0 8px 30px rgba(0,0,0,.45), var(--glow);
-}
-
-/* 薄い分割線 */
-.hr {
-  height:1px; width:100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
-}
-
-/* 小見出し */
-.kicker{ color: var(--txt-dim); font-size: .85rem; }
-
-/* “AIグリーン”の微光背景（カード内） */
-.bg-grid-green{
-  position: relative;
-  overflow: hidden;
-}
-.bg-grid-green::before{
-  content:"";
-  position:absolute; inset:-20%;
+/* ===== Glass cards ===== */
+.glass{
+  position:relative;
+  border-radius:24px;
   background:
-    radial-gradient(400px 300px at 85% 30%, rgba(16,185,129,0.18), transparent 60%),
-    radial-gradient(220px 220px at 30% 60%, rgba(16,185,129,0.12), transparent 55%),
-    radial-gradient(120px 120px at 75% 70%, rgba(16,185,129,0.15), transparent 60%);
-  filter: blur(8px);
+    linear-gradient( to bottom right, rgba(255,255,255,.06), rgba(255,255,255,.02)),
+    var(--card-bg);
+  border:1px solid var(--card-border);
+  box-shadow:
+    0 12px 40px rgba(0,0,0,.35),
+    inset 0 1px 0 rgba(255,255,255,.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.glass--strong{
+  background:
+    radial-gradient(600px 360px at 85% 20%, var(--emerald-soft), transparent 60%),
+    linear-gradient( to bottom right, rgba(255,255,255,.07), rgba(255,255,255,.015)),
+    var(--card-bg-strong);
 }
 
-/* 角丸プログレスの細いレール */
-.progress-rail{
-  height:10px; border-radius: 9999px;
-  background: rgba(255,255,255,0.08);
+/* 角丸・パディングのデフォルト */
+.glass, .glass--strong{
+  padding:16px;
 }
-.progress-bar{
-  height:10px; border-radius: 9999px;
-  background: var(--accent);
-  box-shadow: 0 0 16px rgba(34,197,94,.35), inset 0 0 6px rgba(255,255,255,.08);
-  transition: width .35s ease;
+
+/* カード内のテキスト折れ＆溢れ防止 */
+.glass *, .glass--strong *{
+  min-width:0;
+  word-break:keep-all;
+  overflow-wrap:anywhere;
 }
+
+/* ===== Section titles ===== */
+.section-title{
+  font-size: clamp(18px, 2.4vw, 22px);
+  font-weight:700;
+  letter-spacing:.2px;
+  color:var(--txt-primary);
+  text-shadow: 0 2px 14px rgba(67,227,176,.12);
+}
+
+/* ===== Cockpit progress bar（写真の雰囲気） ===== */
+.progress{
+  position:relative;
+  height:10px;
+  border-radius:9999px;
+  background: rgba(255,255,255,.06);
+  overflow:hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+.progress > .fill{
+  height:100%;
+  width:0%;
+  border-radius:9999px;
+  background: linear-gradient(90deg, var(--emerald-1), var(--emerald-2));
+  box-shadow:
+    0 0 12px rgba(67,227,176,.55),
+    0 0 28px rgba(67,227,176,.28);
+  transition: width .45s cubic-bezier(.22,1,.36,1);
+}
+
+/* パーセントの数字（右側） */
+.progress-percent{
+  font-size:14px;
+  color:var(--txt-muted);
+}
+
+/* 金額のラベル行 */
+.money-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:8px;
+  color:var(--txt-primary);
+}
+.money-row .muted{
+  color:var(--txt-muted);
+}
+
+/* ===== AI Route の黒面パネル（内側のカード） ===== */
+.route-panel{
+  border-radius:18px;
+  background: rgba(0,0,0,.35);
+  border:1px solid rgba(255,255,255,.06);
+  padding:14px 16px;
+}
+
+/* ===== ヘッダーのブランド（中央揃え・軽い光沢） ===== */
+.brand-title{
+  text-align:center;
+  font-weight:800;
+  font-size: clamp(26px, 5vw, 36px);
+  letter-spacing:.3px;
+  text-shadow:
+    0 10px 30px rgba(0,0,0,.55),
+    0 2px 18px rgba(67,227,176,.18);
+}
+
+/* ===== 小さめの角丸ボタン（目標を変更） ===== */
+.btn-soft{
+  padding:.35rem .75rem;
+  border-radius:12px;
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.08);
+  color:var(--txt-primary);
+}
+.btn-soft:hover{
+  background: rgba(255,255,255,.09);
+}
+
+/* ===== タブバー（下部）を少し浮かせる ===== */
+.tabbar{
+  background: rgba(0,0,0,.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top:1px solid rgba(255,255,255,.06);
+}
+
+/* ===== ヘルパー：余白調整（既存Tailwindとの橋渡し） ===== */
+.mt-6{ margin-top:1.5rem; }
+.mb-2{ margin-bottom:.5rem; }
