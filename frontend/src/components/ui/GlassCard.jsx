@@ -2,27 +2,24 @@
 import React from "react";
 
 /**
- * 目的：
- * - 大きい面グローは維持
- * - 小粒の点光（3～4個）は KPI テキストに被らない右側/右下へ寄せる
- * - 仕様（目安）
- *   色: 中心 #E9FFF6 → #2ECC71（白寄りエメラルド）
- *   形: 円（わずかに楕円っぽくぼかし）
- *   コア径: 6–10px
- *   ハロ半径: 80–120px（外周不透明度 10–20%）
- *   ぼかし: 20–40px
- *   合成: screen（加算系）、不透明度 70–85%
- *   配置: 3–4点（大中小）
+ * 発光仕様（要件準拠）
+ * - 色: コア #E9FFF6 → #2ECC71（白寄りエメラルド）
+ * - 形: 円（ごく薄く楕円化）
+ * - コア径: 6–10px（ここでは 6–8px）
+ * - ハロ半径: 80–120px（ここでは 90–110px）
+ * - ぼかし: 20–40px（ここでは 28–36px）
+ * - 合成: screen（加算系）, 不透明度: 0.72–0.82
+ * - 配置: 3–4点（大中小）— 視線誘導のため右〜右下へ寄せ、KPI/見出しから距離を確保
  */
 export default function GlassCard({ className = "", children }) {
-  // 視線誘導のための配置（右〜右下へ寄せる）
+  // 視線誘導を邪魔しない位置（右〜右下）に配置
   const sparks = [
-    // 大（右中段）— もっとも遠く、目立ち度は中
-    { x: "86%", y: "48%", halo: 120, blur: 36, opacity: 0.78 },
-    // 中（右下寄り）— 予測収益の外縁に“寄せるだけ”で数字は覆わない
-    { x: "82%", y: "70%", halo: 100, blur: 32, opacity: 0.75 },
-    // 小（やや左寄りの下部）— デッキの層感を補助
-    { x: "72%", y: "78%", halo: 85, blur: 28, opacity: 0.72 },
+    // 大：右中段。最も明るいがテキストの外縁に留める
+    { x: "86%", y: "50%", halo: 110, blur: 36, opacity: 0.82 },
+    // 中：右下。予測収益周辺“外側”のみ照らす
+    { x: "82%", y: "72%", halo: 100, blur: 32, opacity: 0.78 },
+    // 小：やや左下。カードの奥行きを補助（本文と干渉しない）
+    { x: "72%", y: "80%", halo: 90,  blur: 28, opacity: 0.74 },
   ];
 
   return (
@@ -39,24 +36,18 @@ export default function GlassCard({ className = "", children }) {
       {/* 周辺ビネット（深み） */}
       <div className="pointer-events-none absolute inset-0 rounded-[28px] shadow-[inset_0_0_80px_rgba(0,0,0,0.35)]" />
 
-      {/* 面グロー（右奥の広いにじみ）— 主役はテキスト側ではなく右奥 */}
+      {/* 面グロー（右奥の広いにじみ）— 主役テキスト側ではなく右奥に集約 */}
       <div className="pointer-events-none absolute inset-0 mix-blend-screen opacity-80">
         <div className="-inset-10 absolute blur-[90px] bg-[radial-gradient(260px_240px_at_65%_45%,rgba(109,242,197,0.42),rgba(109,242,197,0.18)_40%,transparent_70%)]" />
       </div>
 
-      {/* 既存のボケた面光（層の奥行き） */}
-      <div className="pointer-events-none absolute inset-0 mix-blend-screen">
-        <span className="absolute left-[72%] top-[52%] -translate-x-1/2 -translate-y-1/2 w-[260px] h-[260px] rounded-full bg-emerald-400/45 blur-[110px]" />
-        <span className="absolute left-[86%] top-[68%] -translate-x-1/2 -translate-y-1/2 w-[160px] h-[160px] rounded-full bg-emerald-400/40 blur-[90px]" />
-      </div>
-
-      {/* 小粒の“点光”— コア + ハロー（指定値に合わせて調整） */}
+      {/* 小粒の“点光” — コア（6–8px）＋ハロー（90–110px、外周10–20%） */}
       <div className="pointer-events-none absolute inset-0 mix-blend-screen">
         {sparks.map((p, i) => (
           <React.Fragment key={i}>
-            {/* コア（6–10px、明るい中心） */}
+            {/* コア：明るい中心（視認性はあるが小さく） */}
             <span
-              className="absolute rounded-full shadow-[0_0_10px_3px_rgba(233,255,246,0.95)]"
+              className="absolute rounded-full"
               style={{
                 left: p.x,
                 top: p.y,
@@ -65,17 +56,18 @@ export default function GlassCard({ className = "", children }) {
                 transform: "translate(-50%,-50%)",
                 background:
                   "radial-gradient(circle, #E9FFF6 0%, #2ECC71 60%, rgba(46,204,113,0.0) 100%)",
+                boxShadow: "0 0 10px 3px rgba(233,255,246,0.95)",
                 opacity: p.opacity,
               }}
             />
-            {/* ハロー（80–120px、外周10–20%） */}
+            {/* ハロー：やわらかい外周（わずかに楕円） */}
             <span
               className="absolute rounded-full"
               style={{
                 left: p.x,
                 top: p.y,
                 width: `${p.halo}px`,
-                height: `${p.halo * 0.92}px`, // わずかに楕円で有機感
+                height: `${Math.round(p.halo * 0.92)}px`, // ほんの少し楕円
                 transform: "translate(-50%,-50%)",
                 background:
                   "radial-gradient(circle, rgba(233,255,246,0.85) 0%, rgba(124,245,200,0.35) 35%, rgba(124,245,200,0.15) 65%, rgba(124,245,200,0.10) 85%, rgba(124,245,200,0.00) 100%)",
@@ -87,7 +79,7 @@ export default function GlassCard({ className = "", children }) {
         ))}
       </div>
 
-      {/* 内容 */}
+      {/* 実内容（常に最前面） */}
       <div className="relative z-10">{children}</div>
     </div>
   );
