@@ -1,3 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+/* （この下にあなたのカスタムCSS：背景グラデやガラス効果 など） */
+
 /* === App base ============================================================ */
 :root{
   --bg-deep:#071312;                  /* 深いボトルグリーン */
