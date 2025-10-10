@@ -1,27 +1,36 @@
+// frontend/src/components/ui/GlassCard.jsx
 import React from "react";
 
-/**
- * ガラス調コンテナ
- * ・装飾レイヤーは pointer-events: none で非インタラクティブ
- * ・コンテンツは z-10 で前面
- */
 export default function GlassCard({ className = "", children }) {
   return (
-    <section
-      className={
-        "relative rounded-2xl border border-white/10 " +
-        "bg-[rgba(17,25,40,0.65)] backdrop-blur-md " +
-        "shadow-[0_8px_30px_rgba(0,0,0,.35)] " +
-        className
-      }
+    <div
+      className={[
+        // ベース：柔らかいガラス
+        "relative overflow-hidden rounded-[28px]",
+        "backdrop-blur-xl bg-white/5",
+        // 輪郭は極薄に
+        "ring-1 ring-white/10",
+        // 深い影で浮かせる
+        "shadow-[0_10px_30px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.06)]",
+        // 余白
+        "p-5 sm:p-6",
+        className,
+      ].join(" ")}
     >
-      {/* 装飾グロー（タップを拾わない） */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
-        <div className="absolute -inset-1 opacity-40 bg-[radial-gradient(600px_200px_at_20%_-10%,rgba(16,185,129,.22),transparent),radial-gradient(500px_180px_at_120%_120%,rgba(14,165,233,.18),transparent)]" />
-      </div>
-
-      {/* 実コンテンツ */}
+      {/* 内側エメラルドのグロー（理想画像の緑のにじみ） */}
+      <div
+        className={[
+          "pointer-events-none absolute inset-0",
+          "bg-[radial-gradient(120%_80%_at_70%_60%,rgba(16,185,129,0.18),rgba(16,185,129,0.08)_45%,transparent_70%)]",
+          "opacity-70 blur-xl",
+        ].join(" ")}
+      />
+      {/* 追加の柔らかい周辺ビネット */}
+      <div
+        className="pointer-events-none absolute inset-0 rounded-[28px] shadow-[inset_0_0_80px_rgba(0,0,0,0.35)]"
+      />
+      {/* 実内容 */}
       <div className="relative z-10">{children}</div>
-    </section>
+    </div>
   );
 }
