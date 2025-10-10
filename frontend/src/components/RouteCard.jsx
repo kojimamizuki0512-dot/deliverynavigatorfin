@@ -15,8 +15,11 @@ export default function RouteCard() {
     <section className="mt-6 px-4 sm:px-6">
       {/* 主役のガラスカード（後列なしで視認性重視） */}
       <GlassCard className="relative">
-        {/* 見出し */}
-        <h2 className="text-[22px] sm:text-[24px] font-semibold tracking-[0.2px] text-emerald-50/90">
+        {/* 見出し（ミント系グラデテキスト：#E6FFF4 → #7CF5C8） */}
+        <h2
+          className="text-[22px] sm:text-[24px] font-semibold tracking-[0.2px] leading-tight
+                     bg-gradient-to-r from-[#E6FFF4] to-[#7CF5C8] bg-clip-text text-transparent"
+        >
           AI Route Suggestion
         </h2>
 
@@ -29,7 +32,7 @@ export default function RouteCard() {
           </div>
         </div>
 
-        {/* タイムライン（SVGアイコン版） */}
+        {/* タイムライン（SVGアイコン版／ラベルは本文16px） */}
         <ul className="mt-4 space-y-3">
           {demo.map((row, i) => (
             <li
@@ -62,11 +65,14 @@ export default function RouteCard() {
           ))}
         </ul>
 
-        {/* 予測収益（フォント指針: tabular-nums/太字/36–40px相当） */}
+        {/* 予測収益（フォント指針: tabular-nums/太字/36–40px相当・わずかに詰める） */}
         <div className="mt-5 rounded-[18px] ring-1 ring-white/10 bg-black/20 px-4 py-4">
           <div className="text-sm text-emerald-100/70">予測収益</div>
-          <div className="mt-1 tabular-nums tracking-tight font-extrabold
-                          text-emerald-300 text-[40px] sm:text-[44px]">
+          <div
+            className="mt-1 tabular-nums font-extrabold text-emerald-300
+                       text-[40px] sm:text-[44px]"
+            style={{ letterSpacing: "-0.01em" }}
+          >
             ¥12,400
           </div>
         </div>
