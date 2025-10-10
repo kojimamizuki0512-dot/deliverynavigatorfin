@@ -2,84 +2,94 @@
 import React from "react";
 
 /**
- * 発光仕様（要件準拠）
- * - 色: コア #E9FFF6 → #2ECC71（白寄りエメラルド）
- * - 形: 円（ごく薄く楕円化）
- * - コア径: 6–10px（ここでは 6–8px）
- * - ハロ半径: 80–120px（ここでは 90–110px）
- * - ぼかし: 20–40px（ここでは 28–36px）
- * - 合成: screen（加算系）, 不透明度: 0.72–0.82
- * - 配置: 3–4点（大中小）— 視線誘導のため右〜右下へ寄せ、KPI/見出しから距離を確保
+ * ガラス風カード（基準画像準拠）
+ * - 角丸 R=28
+ * - 背景: 透過白(5%) + blur + 極薄の輪郭
+ * - 右奥に面光（エメラルド系）
+ * - 端の余白に小さく明るい点光を 3 点（視線は本文/数値に向く配置）
+ * - 内側のビネットで層感を締める
  */
 export default function GlassCard({ className = "", children }) {
-  // 視線誘導を邪魔しない位置（右〜右下）に配置
-  const sparks = [
-    // 大：右中段。最も明るいがテキストの外縁に留める
-    { x: "86%", y: "50%", halo: 110, blur: 36, opacity: 0.82 },
-    // 中：右下。予測収益周辺“外側”のみ照らす
-    { x: "82%", y: "72%", halo: 100, blur: 32, opacity: 0.78 },
-    // 小：やや左下。カードの奥行きを補助（本文と干渉しない）
-    { x: "72%", y: "80%", halo: 90,  blur: 28, opacity: 0.74 },
-  ];
-
   return (
     <div
       className={[
         "relative overflow-hidden rounded-[28px]",
-        "backdrop-blur-2xl bg-white/5",
+        "backdrop-blur-xl bg-white/5",
         "ring-1 ring-white/10",
-        "shadow-[0_10px_30px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.06)]",
+        "shadow-[0_10px_30px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.06)]",
         "p-5 sm:p-6",
         className,
       ].join(" ")}
     >
-      {/* 周辺ビネット（深み） */}
-      <div className="pointer-events-none absolute inset-0 rounded-[28px] shadow-[inset_0_0_80px_rgba(0,0,0,0.35)]" />
+      {/* --- 面光（大きなグリーングロー／基準画像の右側のにじみ） --- */}
+      <div
+        aria-hidden
+        className={[
+          "pointer-events-none absolute inset-0",
+          "bg-[radial-gradient(120%_80%_at_70%_50%,rgba(16,185,129,0.18),rgba(16,185,129,0.08)_45%,transparent_70%)]",
+          "opacity-70 blur-xl",
+        ].join(" ")}
+      />
 
-      {/* 面グロー（右奥の広いにじみ）— 主役テキスト側ではなく右奥に集約 */}
-      <div className="pointer-events-none absolute inset-0 mix-blend-screen opacity-80">
-        <div className="-inset-10 absolute blur-[90px] bg-[radial-gradient(260px_240px_at_65%_45%,rgba(109,242,197,0.42),rgba(109,242,197,0.18)_40%,transparent_70%)]" />
+      {/* --- 点光（小さく明るめ：3点）--- 
+           仕様目安：
+             - コア径: 6–10px（下の core）
+             - ハロ:   80–120px（下の halo）
+             - 色:     center #E9FFF6 → #2ECC71（白寄りのエメラルド）
+             - 合成:   Screen（mix-blend-screen）
+             - 不透明: 0.7–0.85
+             - 位置:   コンテンツを避け、端の余白に寄せる（視線は本文へ）
+      */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
+        {/* dot #1（左上） */}
+        <span className="absolute top-6 left-10 mix-blend-screen">
+          {/* コア */}
+          <span className="block h-[9px] w-[9px] rounded-full bg-[#E9FFF6] opacity-80" />
+          {/* ハロ */}
+          <span
+            className="block -mt-[9px] -ml-[45px] h-[110px] w-[110px] rounded-full opacity-80"
+            style={{
+              background:
+                "radial-gradient(closest-side, rgba(233,255,246,0.85) 0%, rgba(46,204,113,0.55) 12%, rgba(46,204,113,0.0) 70%)",
+              filter: "blur(28px)",
+            }}
+          />
+        </span>
+
+        {/* dot #2（右下） */}
+        <span className="absolute bottom-8 right-12 mix-blend-screen">
+          <span className="block h-[8px] w-[8px] rounded-full bg-[#E9FFF6] opacity-80" />
+          <span
+            className="block -mt-[8px] -ml-[40px] h-[100px] w-[100px] rounded-full opacity-75"
+            style={{
+              background:
+                "radial-gradient(closest-side, rgba(233,255,246,0.85) 0%, rgba(46,204,113,0.5) 12%, rgba(46,204,113,0.0) 68%)",
+              filter: "blur(26px)",
+            }}
+          />
+        </span>
+
+        {/* dot #3（中段やや右：本文ラインを避け、右寄せ） */}
+        <span className="absolute top-[46%] right-16 mix-blend-screen">
+          <span className="block h-[7px] w-[7px] rounded-full bg-[#E9FFF6] opacity-75" />
+          <span
+            className="block -mt-[7px] -ml-[38px] h-[95px] w-[95px] rounded-full opacity-70"
+            style={{
+              background:
+                "radial-gradient(closest-side, rgba(233,255,246,0.8) 0%, rgba(46,204,113,0.45) 12%, rgba(46,204,113,0.0) 66%)",
+              filter: "blur(24px)",
+            }}
+          />
+        </span>
       </div>
 
-      {/* 小粒の“点光” — コア（6–8px）＋ハロー（90–110px、外周10–20%） */}
-      <div className="pointer-events-none absolute inset-0 mix-blend-screen">
-        {sparks.map((p, i) => (
-          <React.Fragment key={i}>
-            {/* コア：明るい中心（視認性はあるが小さく） */}
-            <span
-              className="absolute rounded-full"
-              style={{
-                left: p.x,
-                top: p.y,
-                width: "8px",
-                height: "8px",
-                transform: "translate(-50%,-50%)",
-                background:
-                  "radial-gradient(circle, #E9FFF6 0%, #2ECC71 60%, rgba(46,204,113,0.0) 100%)",
-                boxShadow: "0 0 10px 3px rgba(233,255,246,0.95)",
-                opacity: p.opacity,
-              }}
-            />
-            {/* ハロー：やわらかい外周（わずかに楕円） */}
-            <span
-              className="absolute rounded-full"
-              style={{
-                left: p.x,
-                top: p.y,
-                width: `${p.halo}px`,
-                height: `${Math.round(p.halo * 0.92)}px`, // ほんの少し楕円
-                transform: "translate(-50%,-50%)",
-                background:
-                  "radial-gradient(circle, rgba(233,255,246,0.85) 0%, rgba(124,245,200,0.35) 35%, rgba(124,245,200,0.15) 65%, rgba(124,245,200,0.10) 85%, rgba(124,245,200,0.00) 100%)",
-                filter: `blur(${p.blur}px)`,
-                opacity: p.opacity,
-              }}
-            />
-          </React.Fragment>
-        ))}
-      </div>
+      {/* --- 周辺ビネット（締め） --- */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-[28px] shadow-[inset_0_0_80px_rgba(0,0,0,0.35)]"
+      />
 
-      {/* 実内容（常に最前面） */}
+      {/* --- 実内容 --- */}
       <div className="relative z-10">{children}</div>
     </div>
   );
