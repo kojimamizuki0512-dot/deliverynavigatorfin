@@ -1,113 +1,187 @@
-/* Tailwind */
+/* ===== Tailwind base ===== */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ====== Theme tokens ====== */
+/* ===== Design Tokens (Dark Emerald / Glass) ===== */
 :root{
-  --bg-deep: #071414;
-  --glass-fill-from: rgba(255,255,255,0.06);
-  --glass-fill-to:   rgba(255,255,255,0.02);
-  --glass-stroke:    rgba(255,255,255,0.10);
-  --glass-inner:     rgba(255,255,255,0.20);
-  --emerald: #10b981; /* Tailwind emerald-500 近傍 */
-  --emerald-soft: rgba(16,185,129,.20);
+  /* colors */
+  --bg-0: #070b0a;             /* 背景の最暗部 */
+  --bg-1: #0c1413;             /* 背景の中間 */
+  --bg-2: #0f1917;             /* 背景のやや明るい層 */
+  --line-soft: rgba(255,255,255,.06);   /* 薄い外枠 */
+  --line-inner: rgba(255,255,255,.04);  /* 内側のハイライト */
+  --shadow-strong: rgba(0,0,0,.45);
+  --shadow-soft: rgba(0,0,0,.25);
+  --text-strong: rgba(255,255,255,.92);
+  --text-dim: rgba(255,255,255,.72);
+  --text-faint: rgba(255,255,255,.56);
+
+  /* emerald accent */
+  --emerald-1: #1bd7a0;        /* 明るいエメラルド */
+  --emerald-2: #15c28f;        /* 中間 */
+  --emerald-3: #0fae82;        /* 濃い */
+
+  /* radii / spacing */
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --pad-card: 22px;
+  --gap-row: 14px;
+
+  /* typography scale */
+  --fz-title: 22px;      /* カード見出し */
+  --fz-sub: 17px;        /* 本文 */
+  --fz-time: 16px;       /* 時刻 */
+  --fz-amount: 46px;     /* 大きな金額 */
+
+  --track: rgba(255,255,255,.08); /* progress 背景 */
 }
 
-/* ====== App background (深い暗緑＋放射グラデ) ====== */
-html,body,#root{height:100%;}
+/* ===== App background (深いグリーングラデ + ほのかなバンド) ===== */
+html,body,#root{
+  height:100%;
+}
 body{
-  @apply text-neutral-200 antialiased;
+  color: var(--text-strong);
   background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(16,185,129,.18), transparent 60%),
-    radial-gradient(900px 500px at 80% 20%, rgba(16,185,129,.12), transparent 60%),
-    linear-gradient(180deg, #0b1211 0%, var(--bg-deep) 100%);
+    radial-gradient(1200px 800px at 70% 20%, rgba(23,78,64,.35), transparent 55%),
+    radial-gradient(900px 700px at 20% 80%, rgba(16,122,96,.28), transparent 50%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-0) 60%, #000 100%);
 }
 
-/* ====== Glass card ====== */
-.glass{
-  /* グラス塗り */
-  background:
-    linear-gradient(180deg, var(--glass-fill-from), var(--glass-fill-to));
-  border: 1px solid var(--glass-stroke);
-  border-radius: 22px;
-  /* 影と内側のハイライト */
+/* ===== Glass Card (1枚板の薄いガラス) ===== */
+.glass-card{
+  position: relative;
+  border-radius: var(--radius-lg);
+  padding: var(--pad-card);
+  background: rgba(255,255,255,.035);
+  border: 1px solid var(--line-soft);
+  backdrop-filter: saturate(130%) blur(16px);
+  -webkit-backdrop-filter: saturate(130%) blur(16px);
   box-shadow:
-    0 10px 26px rgba(0,0,0,.45),
-    inset 0 1px 0 var(--glass-inner);
-  /* ぼかし */
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+    0 24px 48px var(--shadow-strong),
+    inset 0 1px var(--line-inner);
+  overflow: hidden; /* bokehレイヤーを内包 */
 }
 
-/* カード見出しのトリム */
-.card-title{
-  @apply text-[22px] leading-tight font-semibold tracking-wide;
+/* bokeh グロー（控えめなエメラルドの光） */
+.glass-card::before{
+  content:"";
+  position:absolute; inset:-20%;
+  background:
+    radial-gradient(320px 280px at 70% 45%, rgba(39, 244, 178,.20), transparent 60%),
+    radial-gradient(220px 220px at 85% 70%, rgba(58, 255, 206,.16), transparent 55%),
+    radial-gradient(180px 180px at 15% 30%, rgba(23, 210, 160,.08), transparent 60%);
+  pointer-events:none;
+  filter: blur(4px);
 }
 
-/* ====== Progress (pill) ====== */
-.pill-track{
+/* 見出し/本文の既定 */
+.glass-title{
+  font-size: var(--fz-title);
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.text-dim{ color: var(--text-dim); }
+.text-faint{ color: var(--text-faint); }
+
+/* ===== Timeline Row（薄い面 + 1px 境界） ===== */
+.row-thin{
+  display:flex; align-items:center; gap:14px;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--line-soft);
+  box-shadow: inset 0 1px var(--line-inner), 0 8px 16px var(--shadow-soft);
+}
+.row-time{
+  min-width:56px;
+  font-size: var(--fz-time);
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align:right;
+}
+.icon-badge{
+  width:32px; height:32px; flex:0 0 32px;
+  display:grid; place-items:center;
+  border-radius: 9999px;
+  background: rgba(20,30,28,.5);
+  box-shadow:
+    inset 0 0 16px rgba(31, 238, 178,.18),
+    0 0 0 1px rgba(255,255,255,.04);
+  color: var(--emerald-1);
+}
+.row-text{
+  font-size: var(--fz-sub);
+  line-height: 1.45;
+  color: var(--text-strong);
+}
+
+/* ===== Emerald Pill Progress ===== */
+.progress-pill{
+  position: relative;
   height: 12px;
-  border-radius: 9999px;
-  background: rgba(255,255,255,.10);
+  border-radius:9999px;
+  background: var(--track);
   overflow: hidden;
+  box-shadow: inset 0 1px var(--line-inner);
 }
-.pill-fill{
-  height: 100%;
-  border-radius: 9999px;
-  background:
-    radial-gradient(40px 40px at 20% 50%, rgba(255,255,255,.25), transparent 60%),
-    linear-gradient(90deg, rgba(16,185,129,.85) 0%, rgba(16,185,129,.55) 100%);
-  box-shadow: 0 0 18px var(--emerald-soft), 0 0 2px rgba(16,185,129,.8) inset;
-  transition: width .4s ease;
-}
-
-/* ====== AIカード内パネル（薄い黒 + 丸） ====== */
-.subpanel{
-  background: rgba(0,0,0,.35);
-  border: 1px solid rgba(255,255,255,.06);
-  border-radius: 18px;
+.progress-pill__fill{
+  height:100%;
+  background: linear-gradient(90deg, var(--emerald-3), var(--emerald-1) 55%, var(--emerald-2));
+  border-radius: inherit;
+  box-shadow:
+    0 0 24px rgba(39, 244, 178,.35),
+    0 8px 12px rgba(0,0,0,.25) inset;
+  transition: width .4s cubic-bezier(.22,.69,.11,1);
 }
 
-/* ====== TabBar ====== */
-.tabbar{
-  position: sticky; /* iOS Safでも固定されやすい */
-  bottom: 0;
-  z-index: 40;
-  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
-  border-top: 1px solid rgba(255,255,255,.08);
-  background:
-    linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,.35));
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-}
-.tabbtn{
-  @apply flex flex-col items-center justify-center gap-1 text-[12px] rounded-2xl px-4 py-2 transition-colors;
-  color: rgba(255,255,255,.75);
-}
-.tabbtn--active{
-  background: rgba(16,185,129,.15);
-  color: white;
-  box-shadow: 0 0 0 1px rgba(16,185,129,.25) inset, 0 0 18px var(--emerald-soft);
+/* 右端の “8%” などの小ラベル */
+.progress-pill__label{
+  color: var(--text-dim);
+  font-weight:600;
 }
 
-/* ====== 小物 ====== */
-.title-large{
-  @apply text-[34px] font-extrabold tracking-wide text-white text-center;
-}
-.caption{
-  @apply text-sm text-neutral-400;
-}
-.btn-ghost{
-  @apply rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-white text-sm;
+/* ===== Big Amount ===== */
+.amount-emerald{
+  font-size: var(--fz-amount);
+  font-weight: 800;
+  color: #76ffd8;           /* 目に優しいペールエメラルド */
+  text-shadow: 0 2px 12px rgba(43, 255, 200,.18);
+  font-variant-numeric: tabular-nums;
 }
 
-/* 入力の見た目（iOSでplaceholder薄すぎを防ぐ） */
-input::placeholder, textarea::placeholder{
-  color: rgba(255,255,255,.55);
+/* ===== Frosted Tabbar（1枚板の足元バー） ===== */
+.frosted-tabbar{
+  position: sticky; bottom: 0; left: 0; right: 0;
+  display:flex; gap: 6px; justify-content: space-around;
+  padding: 12px 14px calc(env(safe-area-inset-bottom,0) + 10px);
+  background: rgba(6,10,10,.5);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border-top: 1px solid rgba(255,255,255,.06);
+  box-shadow: 0 -18px 40px rgba(0,0,0,.45), inset 0 1px rgba(255,255,255,.04);
+  z-index: 30;
+}
+.frosted-tabbar .tab{
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  min-width: 72px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--text-faint);
+}
+.frosted-tabbar .tab.is-active{
+  color: #9efadd;
+  text-shadow: 0 0 16px rgba(43,255,200,.25);
+}
+.frosted-tabbar .tab.is-active::after{
+  content:"";
+  margin-top:6px;
+  width: 26px; height: 2px; border-radius: 9999px;
+  background: linear-gradient(90deg, var(--emerald-3), var(--emerald-1));
+  box-shadow: 0 0 14px rgba(39,244,178,.35);
 }
 
-/* iOSのゴムバンドで背景が白く見えないように */
-@supports (color: color(display-p3 1 1 1)){
-  body{ background-color: color(display-p3 0.03 0.07 0.06); }
-}
+/* ===== Helpers ===== */
+.round-xl{ border-radius: var(--radius-xl); }
+.gap-row{ display:flex; flex-direction:column; gap: var(--gap-row); }
