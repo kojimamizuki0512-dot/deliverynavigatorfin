@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "./api";
 import GlassCard from "./components/ui/GlassCard.jsx";
+import Icon from "./components/ui/Icon.jsx";
 import RouteCard from "./components/RouteCard.jsx";
 import RecordInputCard from "./components/RecordInputCard.jsx";
 import SummaryCard from "./components/SummaryCard.jsx";
@@ -9,7 +10,7 @@ import SummaryCard from "./components/SummaryCard.jsx";
 const GOAL_KEY = "dnf_goal_monthly";
 
 function useDeviceId() {
-  // 端末ごと識別（匿名ユーザー割り当て用）。未使用でもOK。
+  // 端末ごと識別（匿名ユーザー割り当て用）
   return useMemo(() => {
     const k = "dnf_device_id";
     let id = localStorage.getItem(k);
@@ -28,6 +29,9 @@ export default function App() {
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 画面切替（ボトムタブ）：ai | record | history
+  const [tab, setTab] = useState("ai");
+
   // ルート＆メッセージ
   const [route, setRoute] = useState([]);
   const [msg, setMsg] = useState("");
@@ -40,6 +44,9 @@ export default function App() {
 
   // 今月達成額（バックから取得）
   const [monthTotal, setMonthTotal] = useState(0);
+
+  // 履歴をリフレッシュするためのキー（保存後に +1 して再取得トリガに使う）
+  const [refreshSeq, setRefreshSeq] = useState(0);
 
   // ===== 初期化 =====
   useEffect(() => {
@@ -91,7 +98,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen max-w-5xl mx-auto px-4 py-6">
+    <div className="min-h-screen max-w-5xl mx-auto px-4 pt-6 pb-28">
       {/* ヘッダー */}
       <header className="mb-5">
         <div className="text-center">
@@ -144,27 +151,85 @@ export default function App() {
         </GlassCard>
       </section>
 
-      {/* メイン（未ログインでも匿名の me が入る想定なのでそのまま表示） */}
+      {/* ===== コンテンツ：タブで1画面だけ表示 ===== */}
       {msg && (
         <div className="p-3 rounded-lg bg-amber-900/40 border border-amber-800 text-amber-200 mb-4">
           {msg}
         </div>
       )}
 
-      {/* ダッシュボード：AI提案カード／実績入力／履歴（お好みで並べ替え可） */}
-      <div className="grid grid-cols-1 gap-6">
-        <RouteCard />
-        <RecordInputCard
-          // 保存後に達成額・履歴を即時反映
-          onSaved={async () => {
-            try {
-              const mt = await api.monthlyTotal?.();
-              if (mt && typeof mt.total === "number") setMonthTotal(mt.total);
-            } catch {}
-          }}
-        />
-        <SummaryCard />
-      </div>
+      {tab === "ai" && (
+        <div className="grid grid-cols-1 gap-6">
+          <RouteCard route={route} />
+        </div>
+      )}
+
+      {tab === "record" && (
+        <div className="grid grid-cols-1 gap-6">
+          <RecordInputCard
+            onSaved={async () => {
+              // 保存→KPI更新 & 履歴更新トリガ
+              try {
+                const mt = await api.monthlyTotal?.();
+                if (mt && typeof mt.total === "number") setMonthTotal(mt.total);
+              } catch {}
+              setRefreshSeq((s) => s + 1);
+            }}
+          />
+        </div>
+      )}
+
+      {tab === "history" && (
+        <div className="grid grid-cols-1 gap-6">
+          {/* key でマウントし直し → 保存直後に最新を取得させる */}
+          <SummaryCard key={refreshSeq} />
+        </div>
+      )}
+
+      {/* ===== ボトム・タブバー（固定） ===== */}
+      <nav className="fixed left-0 right-0 bottom-4">
+        <div className="mx-auto max-w-5xl px-4">
+          <div className="flex items-center justify-around rounded-2xl
+                          backdrop-blur-xl bg-black/30 ring-1 ring-white/10
+                          shadow-[0_8px_30px_rgba(0,0,0,0.35)] px-3 py-2">
+            {/* AI提案 */}
+            <button
+              onClick={() => setTab("ai")}
+              className={[
+                "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition",
+                tab === "ai" ? "bg-white/8 ring-1 ring-emerald-400/30 text-emerald-300" : "text-emerald-100/70"
+              ].join(" ")}
+            >
+              <Icon name="compass" size={24} className="mb-0.5" />
+              <span className="text-[11px]">AI提案</span>
+            </button>
+
+            {/* 実績を記録 */}
+            <button
+              onClick={() => setTab("record")}
+              className={[
+                "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition",
+                tab === "record" ? "bg-white/8 ring-1 ring-emerald-400/30 text-emerald-300" : "text-emerald-100/70"
+              ].join(" ")}
+            >
+              <Icon name="bolt" size={24} className="mb-0.5" />
+              <span className="text-[11px]">実績入力</span>
+            </button>
+
+            {/* これまでの実績 */}
+            <button
+              onClick={() => setTab("history")}
+              className={[
+                "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition",
+                tab === "history" ? "bg-white/8 ring-1 ring-emerald-400/30 text-emerald-300" : "text-emerald-100/70"
+              ].join(" ")}
+            >
+              <Icon name="list" size={24} className="mb-0.5" />
+              <span className="text-[11px]">これまで</span>
+            </button>
+          </div>
+        </div>
+      </nav>
     </div>
   );
 }
